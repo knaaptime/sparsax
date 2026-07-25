@@ -69,6 +69,46 @@ if(NOT CHOLMOD_TARGET)
     endif()
 endif()
 
+# --- KLU (SuiteSparse sparse LU for non-symmetric matrices) ---
+# Same discovery strategy as CHOLMOD: prefer the CMake package config
+# (SuiteSparse::KLU, shipped by conda-forge et al.), fall back to a prefix guess.
+find_package(KLU CONFIG QUIET)
+
+set(KLU_TARGET "")
+if(TARGET SuiteSparse::KLU)
+    set(KLU_TARGET SuiteSparse::KLU)
+elseif(TARGET KLU::KLU)
+    set(KLU_TARGET KLU::KLU)
+endif()
+
+if(NOT KLU_TARGET)
+    if(NOT DEFINED KLU_HINT_PREFIX)
+        if(DEFINED CHOLMOD_HINT_PREFIX)
+            set(KLU_HINT_PREFIX "${CHOLMOD_HINT_PREFIX}")
+        else()
+            execute_process(
+                COMMAND "${Python_EXECUTABLE}" -c "import sys; print(sys.prefix)"
+                OUTPUT_VARIABLE KLU_PREFIX
+                OUTPUT_STRIP_TRAILING_WHITESPACE)
+            if(WIN32)
+                set(KLU_HINT_PREFIX "${KLU_PREFIX}/Library")
+            else()
+                set(KLU_HINT_PREFIX "${KLU_PREFIX}")
+            endif()
+        endif()
+    endif()
+    find_library(KLU_LIBRARY NAMES klu libklu HINTS ${KLU_HINT_PREFIX}/lib)
+    find_path(KLU_INCLUDE_DIR klu.h
+        HINTS ${KLU_HINT_PREFIX}/include/suitesparse ${KLU_HINT_PREFIX}/include)
+    if(NOT KLU_LIBRARY OR NOT KLU_INCLUDE_DIR)
+        message(FATAL_ERROR
+            "KLU not found. Checked for a CMake package config, the prefix "
+            "${KLU_HINT_PREFIX}, and standard system locations. Install "
+            "suitesparse (it ships KLU alongside CHOLMOD) or set "
+            "CMAKE_PREFIX_PATH.")
+    endif()
+endif()
+
 # Locate nanobind via its Python package.
 execute_process(
     COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
@@ -87,6 +127,13 @@ if(CHOLMOD_TARGET)
 else()
     target_include_directories(cholgraph_cpp PRIVATE ${CHOLMOD_INCLUDE_DIR})
     target_link_libraries(cholgraph_cpp PRIVATE ${CHOLMOD_LIBRARY})
+endif()
+
+if(KLU_TARGET)
+    target_link_libraries(cholgraph_cpp PRIVATE ${KLU_TARGET})
+else()
+    target_include_directories(cholgraph_cpp PRIVATE ${KLU_INCLUDE_DIR})
+    target_link_libraries(cholgraph_cpp PRIVATE ${KLU_LIBRARY})
 endif()
 
 # Embed an RPATH covering every library actually linked (CHOLMOD, and

@@ -48,6 +48,9 @@ __all__ = [
     "factor_solve",
     "sample_gaussian",
     "update_solve",
+    "lu_solve",
+    "lu_solve_bcoo",
+    "set_lu_cache_size",
     "solve_bcoo",
     "logdet_bcoo",
     "update_solve_bcoo",
@@ -93,6 +96,14 @@ jax.ffi.register_ffi_target(
 jax.ffi.register_ffi_target(
     "cholgraph_factor_solve_batched_f64",
     _cpp.factor_solve_batched_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "cholgraph_lu_solve_f64", _cpp.lu_solve_f64_capsule(), platform="cpu"
+)
+jax.ffi.register_ffi_target(
+    "cholgraph_lu_solve_batched_f64",
+    _cpp.lu_solve_batched_f64_capsule(),
     platform="cpu",
 )
 
@@ -228,6 +239,133 @@ def solve(Ai, Aj, Ax, b, mode=MODE_A):
 
     _solve_a.defvjp(_fwd, _bwd)
     return _solve_a(Ax, b)
+
+
+# --- KLU: sparse LU for non-symmetric A (e.g. A = I - rho W) ---------------
+#
+# The spatial-econometrics counterpart to :func:`solve`: when W is
+# row-standardised (or otherwise asymmetric and not d-symmetrisable), A is
+# non-symmetric and CHOLMOD does not apply, so these route to SuiteSparse KLU
+# instead. Same JIT/vmap story — the pattern's symbolic analysis is cached and
+# a whole vmap batch is solved in one native call — but backed by an LU factor
+# cache (see set_lu_cache_size) so a factor-once-solve-many sweep (a shift-invert
+# Krylov basis at a fixed rho, say) reuses the factor across chains under vmap.
+
+
+def _lu_solve_batched(Ai, Aj, Ax, b, trans):
+    # One FFI call for a whole batch (leading axis 0): the C++ handler loops over
+    # B, reusing the cached analysis and the LU factor cache.
+    call = jax.ffi.ffi_call(
+        "cholgraph_lu_solve_batched_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
+    )
+    return call(Ai, Aj, Ax, b, trans=np.int64(trans))
+
+
+_LU_DISPATCH = {}
+
+
+def _make_lu_dispatch(trans):
+    @jax.custom_batching.custom_vmap
+    def dispatch(Ai, Aj, Ax, b):
+        call = jax.ffi.ffi_call(
+            "cholgraph_lu_solve_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
+        )
+        return call(Ai, Aj, Ax, b, trans=np.int64(trans))
+
+    @dispatch.def_vmap
+    def _dispatch_vmap(axis_size, in_batched, Ai, Aj, Ax, b):
+        _, _, Ax_batched, b_batched = in_batched
+        if not Ax_batched:
+            Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
+        if not b_batched:
+            b = jnp.broadcast_to(b, (axis_size,) + b.shape)
+        return _lu_solve_batched(Ai, Aj, Ax, b, trans), True
+
+    return dispatch
+
+
+def _lu_solve_ffi(Ai, Aj, Ax, b, trans):
+    dispatch = _LU_DISPATCH.get(trans)
+    if dispatch is None:
+        dispatch = _LU_DISPATCH[trans] = _make_lu_dispatch(trans)
+    return dispatch(Ai, Aj, Ax, b)
+
+
+def lu_solve(Ai, Aj, Ax, b):
+    """Solve ``A x = b`` for a general (non-symmetric) sparse ``A`` via KLU.
+
+    The LU analogue of :func:`solve`: use it when ``A`` is not symmetric
+    positive definite — e.g. ``A = I - rho W`` for a row-standardised spatial
+    weights matrix ``W``. Works inside ``@jax.jit`` / ``lax.scan``; the sparsity
+    pattern's fill-reducing analysis is computed once and cached, and under
+    ``jax.vmap`` the whole batch is solved in a single native FFI call.
+
+    Args:
+        Ai: ``[n_nz]`` int32 — COO row indices.
+        Aj: ``[n_nz]`` int32 — COO column indices. Unlike :func:`solve`, the
+            full matrix is used (no upper-triangle folding).
+        Ax: ``[n_nz]`` float64 — COO values. Duplicates are summed.
+        b: ``[n]`` or ``[n, n_rhs]`` float64 — right-hand side(s).
+
+    Returns:
+        ``x`` with the same shape as ``b``.
+
+    Raises:
+        Exception: if ``A`` is singular (raised by the XLA runtime with the KLU
+            failure status in the message).
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    b = jnp.asarray(b, jnp.float64)
+    if b.ndim not in (1, 2):
+        raise ValueError(f"b must be 1D or 2D, got shape {b.shape}")
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError(
+            f"Ai, Aj, Ax must be 1D with equal lengths, got "
+            f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
+        )
+
+    # AD for x = A^{-1} b: with v solving A^T v = g (a transpose solve reusing
+    # the same cached factor), db = v and dA = -v x^T, i.e. for COO entry k at
+    # (i, j), dAx[k] = -v_i x_j (summed over right-hand sides). No symmetry.
+    @jax.custom_vjp
+    def _lu(Ax, b):
+        return _lu_solve_ffi(Ai, Aj, Ax, b, 0)
+
+    def _fwd(Ax, b):
+        x = _lu_solve_ffi(Ai, Aj, Ax, b, 0)
+        return x, (Ax, x)
+
+    def _bwd(res, g):
+        Ax_saved, x = res
+        v = _lu_solve_ffi(Ai, Aj, Ax_saved, g, 1)  # A^T v = g
+        if x.ndim == 1:
+            dAx = -(v[Ai] * x[Aj])
+        else:
+            dAx = -(v[Ai] * x[Aj]).sum(-1)
+        return dAx, v
+
+    _lu.defvjp(_fwd, _bwd)
+    return _lu(Ax, b)
+
+
+def lu_solve_bcoo(A, b):
+    """:func:`lu_solve` for a JAX ``BCOO`` matrix ``A``."""
+    Ai, Aj, Ax = _bcoo_parts(A)
+    return lu_solve(Ai, Aj, Ax, b)
+
+
+def set_lu_cache_size(n):
+    """Set how many KLU numeric factors are retained per sparsity pattern.
+
+    The LU factor cache is content-addressed on the COO values. For a vmapped
+    factor-once-solve-many sweep to reuse each chain's factorization across the
+    several solves (rather than refactor on every call), the cache must hold at
+    least as many factors as the vmap batch size (number of chains). Default 32.
+    """
+    _cpp.set_lu_cache_size(int(n))
 
 
 def _logdet_ffi(Ai, Aj, Ax, n):
