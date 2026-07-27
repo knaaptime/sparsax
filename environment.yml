@@ -1,4 +1,4 @@
-name: cholgraph
+name: sparsax
 channels:
   - conda-forge
 dependencies:

@@ -45,7 +45,7 @@ jobs:
 
       - name: Test package
         run: |
-          pytest --cov src/cholgraph \
+          pytest --cov src/sparsax \
            -v \
            -r a \
            -n auto \

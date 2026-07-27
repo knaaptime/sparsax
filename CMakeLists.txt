@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(cholgraph LANGUAGES CXX)
+project(sparsax LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -118,29 +118,29 @@ execute_process(
 list(APPEND CMAKE_PREFIX_PATH "${NANOBIND_CMAKE_DIR}")
 find_package(nanobind REQUIRED CONFIG)
 
-nanobind_add_module(cholgraph_cpp src/cpp/cholgraph.cpp)
+nanobind_add_module(sparsax_cpp src/cpp/sparsax.cpp)
 
-target_include_directories(cholgraph_cpp PRIVATE ${XLA_FFI_INCLUDE_DIR})
+target_include_directories(sparsax_cpp PRIVATE ${XLA_FFI_INCLUDE_DIR})
 
 if(CHOLMOD_TARGET)
-    target_link_libraries(cholgraph_cpp PRIVATE ${CHOLMOD_TARGET})
+    target_link_libraries(sparsax_cpp PRIVATE ${CHOLMOD_TARGET})
 else()
-    target_include_directories(cholgraph_cpp PRIVATE ${CHOLMOD_INCLUDE_DIR})
-    target_link_libraries(cholgraph_cpp PRIVATE ${CHOLMOD_LIBRARY})
+    target_include_directories(sparsax_cpp PRIVATE ${CHOLMOD_INCLUDE_DIR})
+    target_link_libraries(sparsax_cpp PRIVATE ${CHOLMOD_LIBRARY})
 endif()
 
 if(KLU_TARGET)
-    target_link_libraries(cholgraph_cpp PRIVATE ${KLU_TARGET})
+    target_link_libraries(sparsax_cpp PRIVATE ${KLU_TARGET})
 else()
-    target_include_directories(cholgraph_cpp PRIVATE ${KLU_INCLUDE_DIR})
-    target_link_libraries(cholgraph_cpp PRIVATE ${KLU_LIBRARY})
+    target_include_directories(sparsax_cpp PRIVATE ${KLU_INCLUDE_DIR})
+    target_link_libraries(sparsax_cpp PRIVATE ${KLU_LIBRARY})
 endif()
 
 # Embed an RPATH covering every library actually linked (CHOLMOD, and
 # whatever BLAS/LAPACK/METIS it pulls in), wherever they really live --
 # conda, Homebrew, apt, or vcpkg -- rather than hardcoding one guessed path.
-set_target_properties(cholgraph_cpp PROPERTIES
+set_target_properties(sparsax_cpp PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-install(TARGETS cholgraph_cpp LIBRARY DESTINATION .)
+install(TARGETS sparsax_cpp LIBRARY DESTINATION .)

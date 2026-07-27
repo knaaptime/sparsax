@@ -86,7 +86,7 @@ jobs:
       # CHOLMOD (from SuiteSparse) isn't preinstalled here either. vcpkg
       # ships preinstalled on GitHub-hosted Windows runners, so use it. The
       # umbrella `suitesparse` port only pulls in CHOLMOD's partition module
-      # by default -- cholgraph needs Modify (cholmod_updown) too, which vcpkg
+      # by default -- sparsax needs Modify (cholmod_updown) too, which vcpkg
       # gates behind its `gpl` feature since Modify/MatrixOps/Supernodal are
       # GPL-licensed (this also pulls in MatrixOps and Supernodal, which
       # apt/Homebrew's suitesparse packages build unconditionally but vcpkg

@@ -1,4 +1,4 @@
-// cholgraph: CHOLMOD sparse Cholesky as XLA FFI custom calls.
+// sparsax: CHOLMOD sparse Cholesky as XLA FFI custom calls.
 //
 // Design:
 //   - A single global cholmod_common guarded by a mutex (CHOLMOD's workspace
@@ -20,6 +20,7 @@
 #include <nanobind/ndarray.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -142,7 +143,7 @@ static PatternEntry* create_entry_locked(const int32_t* Ai, const int32_t* Aj,
                                          std::string* err) {
   for (int64_t k = 0; k < nnz; ++k) {
     if (Ai[k] < 0 || Ai[k] >= n || Aj[k] < 0 || Aj[k] >= n) {
-      *err = "cholgraph: COO index out of range for matrix dimension " +
+      *err = "sparsax: COO index out of range for matrix dimension " +
              std::to_string(n);
       return nullptr;
     }
@@ -177,7 +178,7 @@ static PatternEntry* create_entry_locked(const int32_t* Ai, const int32_t* Aj,
       n, n, nnz_csc, /*sorted=*/1, /*packed=*/1, /*stype=*/1, CHOLMOD_REAL,
       &g_common);
   if (!A) {
-    *err = "cholgraph: cholmod_allocate_sparse failed";
+    *err = "sparsax: cholmod_allocate_sparse failed";
     return nullptr;
   }
 
@@ -203,7 +204,7 @@ static PatternEntry* create_entry_locked(const int32_t* Ai, const int32_t* Aj,
   entry->L = cholmod_analyze(A, &g_common);
   if (!entry->L || g_common.status < CHOLMOD_OK) {
     free_entry_locked(entry.get());
-    *err = "cholgraph: cholmod_analyze failed (status " +
+    *err = "sparsax: cholmod_analyze failed (status " +
            std::to_string(g_common.status) + ")";
     return nullptr;
   }
@@ -290,14 +291,14 @@ static bool factorize_locked(PatternEntry* e, const double* Ax, int64_t nnz,
   if (g_common.status == CHOLMOD_NOT_POSDEF) {
     e->factored = false;
     e->last_Ax.clear();
-    *err = "cholgraph: matrix is not positive definite (failure at column " +
+    *err = "sparsax: matrix is not positive definite (failure at column " +
            std::to_string(e->L->minor) + ")";
     return false;
   }
   if (g_common.status < CHOLMOD_OK) {
     e->factored = false;
     e->last_Ax.clear();
-    *err = "cholgraph: cholmod_factorize failed (status " +
+    *err = "sparsax: cholmod_factorize failed (status " +
            std::to_string(g_common.status) + ")";
     return false;
   }
@@ -307,7 +308,7 @@ static bool factorize_locked(PatternEntry* e, const double* Ax, int64_t nnz,
     // turns negative pivots into NaNs, which land here.
     e->factored = false;
     e->last_Ax.clear();
-    *err = "cholgraph: matrix is not positive definite";
+    *err = "sparsax: matrix is not positive definite";
     return false;
   }
   e->last_Ax.assign(Ax, Ax + nnz);
@@ -363,7 +364,7 @@ static ffi::Error solve_one_locked(PatternEntry* e, cholmod_factor* L, int mode,
   int ok = cholmod_solve2(mode, L, &B, nullptr, &e->Xwork, nullptr, &e->Ywork,
                           &e->Ework, &g_common);
   if (!ok || !e->Xwork || g_common.status < CHOLMOD_OK)
-    return ffi::Error::Internal("cholgraph: cholmod_solve failed (status " +
+    return ffi::Error::Internal("sparsax: cholmod_solve failed (status " +
                                 std::to_string(g_common.status) + ")");
 
   const double* Xx = static_cast<const double*>(e->Xwork->x);
@@ -388,16 +389,16 @@ static ffi::Error SolveF64Impl(ffi::Buffer<ffi::S32> Ai,
                                ffi::ResultBuffer<ffi::F64> x, int64_t mode) {
   auto bdims = b.dimensions();
   if (bdims.size() < 1 || bdims.size() > 2)
-    return ffi::Error::InvalidArgument("cholgraph: b must be 1D or 2D");
+    return ffi::Error::InvalidArgument("sparsax: b must be 1D or 2D");
   int64_t n = bdims[0];
   int64_t nrhs = bdims.size() == 2 ? bdims[1] : 1;
   int64_t nnz = static_cast<int64_t>(Ai.element_count());
   if (static_cast<int64_t>(Aj.element_count()) != nnz ||
       static_cast<int64_t>(Ax.element_count()) != nnz)
     return ffi::Error::InvalidArgument(
-        "cholgraph: Ai, Aj, Ax must have the same length");
+        "sparsax: Ai, Aj, Ax must have the same length");
   if (mode < 0 || mode > 8)
-    return ffi::Error::InvalidArgument("cholgraph: invalid solve mode");
+    return ffi::Error::InvalidArgument("sparsax: invalid solve mode");
 
   std::lock_guard<std::mutex> lock(g_mutex);
   ensure_started_locked();
@@ -441,7 +442,7 @@ static ffi::Error SolveBatchedF64Impl(ffi::Buffer<ffi::S32> Ai,
   auto bdims = b.dimensions();
   if (bdims.size() < 2 || bdims.size() > 3)
     return ffi::Error::InvalidArgument(
-        "cholgraph: batched b must be 2D or 3D");
+        "sparsax: batched b must be 2D or 3D");
   int64_t batch = bdims[0];
   int64_t n = bdims[1];
   int64_t nrhs = bdims.size() == 3 ? bdims[2] : 1;
@@ -449,12 +450,12 @@ static ffi::Error SolveBatchedF64Impl(ffi::Buffer<ffi::S32> Ai,
   auto axdims = Ax.dimensions();
   if (axdims.size() != 2 || axdims[0] != batch || axdims[1] != nnz)
     return ffi::Error::InvalidArgument(
-        "cholgraph: batched Ax must have shape (batch, nnz) matching b");
+        "sparsax: batched Ax must have shape (batch, nnz) matching b");
   if (static_cast<int64_t>(Aj.element_count()) != nnz)
     return ffi::Error::InvalidArgument(
-        "cholgraph: Ai, Aj must have the same length");
+        "sparsax: Ai, Aj must have the same length");
   if (mode < 0 || mode > 8)
-    return ffi::Error::InvalidArgument("cholgraph: invalid solve mode");
+    return ffi::Error::InvalidArgument("sparsax: invalid solve mode");
 
   std::lock_guard<std::mutex> lock(g_mutex);
   ensure_started_locked();
@@ -503,7 +504,7 @@ static ffi::Error LogdetF64Impl(ffi::Buffer<ffi::S32> Ai,
   if (static_cast<int64_t>(Aj.element_count()) != nnz ||
       static_cast<int64_t>(Ax.element_count()) != nnz)
     return ffi::Error::InvalidArgument(
-        "cholgraph: Ai, Aj, Ax must have the same length");
+        "sparsax: Ai, Aj, Ax must have the same length");
 
   std::lock_guard<std::mutex> lock(g_mutex);
   ensure_started_locked();
@@ -565,7 +566,7 @@ static ffi::Error apply_solves_locked(
     for (int64_t s = 0; s < len; ++s) {
       int64_t mode = mode_chain[coff + s];
       if (mode < 0 || mode > 8)
-        return ffi::Error::InvalidArgument("cholgraph: invalid solve mode");
+        return ffi::Error::InvalidArgument("sparsax: invalid solve mode");
       // Final step writes into the output buffer; intermediates ping-pong.
       double* out;
       if (s == len - 1)
@@ -594,14 +595,14 @@ static ffi::Error FactorSolveF64Impl(
   if (static_cast<int64_t>(Aj.element_count()) != nnz ||
       static_cast<int64_t>(Ax.element_count()) != nnz)
     return ffi::Error::InvalidArgument(
-        "cholgraph: Ai, Aj, Ax must have the same length");
+        "sparsax: Ai, Aj, Ax must have the same length");
   int64_t K = static_cast<int64_t>(chain_lens.size());
   if (static_cast<int64_t>(rhs.size()) != K)
     return ffi::Error::InvalidArgument(
-        "cholgraph: number of right-hand sides must match chain_lens");
+        "sparsax: number of right-hand sides must match chain_lens");
   if (static_cast<int64_t>(rets.size()) != K + (want_logdet ? 1 : 0))
     return ffi::Error::InvalidArgument(
-        "cholgraph: number of results must match rhs count (+ logdet)");
+        "sparsax: number of results must match rhs count (+ logdet)");
 
   std::vector<const double*> bptr(K);
   std::vector<double*> xptr(K);
@@ -614,7 +615,7 @@ static ffi::Error FactorSolveF64Impl(
     auto bdims = b->dimensions();
     if (bdims.size() < 1 || bdims.size() > 2 || bdims[0] != n)
       return ffi::Error::InvalidArgument(
-          "cholgraph: each rhs must be (n) or (n, nrhs) with matching n");
+          "sparsax: each rhs must be (n) or (n, nrhs) with matching n");
     bptr[k] = b->typed_data();
     xptr[k] = (*x)->typed_data();
     nrhs[k] = bdims.size() == 2 ? bdims[1] : 1;
@@ -669,15 +670,15 @@ static ffi::Error FactorSolveBatchedF64Impl(
   auto axdims = Ax.dimensions();
   if (axdims.size() != 2 || axdims[1] != nnz)
     return ffi::Error::InvalidArgument(
-        "cholgraph: batched Ax must have shape (batch, nnz)");
+        "sparsax: batched Ax must have shape (batch, nnz)");
   int64_t batch = axdims[0];
   int64_t K = static_cast<int64_t>(chain_lens.size());
   if (static_cast<int64_t>(rhs.size()) != K)
     return ffi::Error::InvalidArgument(
-        "cholgraph: number of right-hand sides must match chain_lens");
+        "sparsax: number of right-hand sides must match chain_lens");
   if (static_cast<int64_t>(rets.size()) != K + (want_logdet ? 1 : 0))
     return ffi::Error::InvalidArgument(
-        "cholgraph: number of results must match rhs count (+ logdet)");
+        "sparsax: number of results must match rhs count (+ logdet)");
 
   // Per-rhs element strides and per-batch base pointers.
   std::vector<const double*> bbase(K);
@@ -692,7 +693,7 @@ static ffi::Error FactorSolveBatchedF64Impl(
     if (bdims.size() < 2 || bdims.size() > 3 || bdims[0] != batch ||
         bdims[1] != n)
       return ffi::Error::InvalidArgument(
-          "cholgraph: each batched rhs must be (batch, n[, nrhs])");
+          "sparsax: each batched rhs must be (batch, n[, nrhs])");
     nrhs[k] = bdims.size() == 3 ? bdims[2] : 1;
     bstride[k] = n * nrhs[k];
     bbase[k] = b->typed_data();
@@ -759,11 +760,11 @@ static ffi::Error ensure_ldl_locked(PatternEntry* e) {
   if (e->Lldl) cholmod_free_factor(&e->Lldl, &g_common);
   e->Lldl = cholmod_copy_factor(e->L, &g_common);
   if (!e->Lldl)
-    return ffi::Error::Internal("cholgraph: cholmod_copy_factor failed");
+    return ffi::Error::Internal("sparsax: cholmod_copy_factor failed");
   if (!cholmod_change_factor(CHOLMOD_REAL, /*to_ll=*/0, /*to_super=*/0,
                              /*to_packed=*/1, /*to_monotonic=*/1, e->Lldl,
                              &g_common))
-    return ffi::Error::Internal("cholgraph: cholmod_change_factor failed");
+    return ffi::Error::Internal("sparsax: cholmod_change_factor failed");
   e->ldl_epoch = e->factor_epoch;
   return ffi::Error::Success();
 }
@@ -863,7 +864,7 @@ static ffi::Error SelinvF64Impl(ffi::Buffer<ffi::S32> Ai,
   if (static_cast<int64_t>(Aj.element_count()) != nnz ||
       static_cast<int64_t>(Ax.element_count()) != nnz)
     return ffi::Error::InvalidArgument(
-        "cholgraph: Ai, Aj, Ax must have the same length");
+        "sparsax: Ai, Aj, Ax must have the same length");
 
   std::lock_guard<std::mutex> lock(g_mutex);
   ensure_started_locked();
@@ -909,21 +910,21 @@ static ffi::Error UpdownSolveF64Impl(ffi::Buffer<ffi::S32> Ai,
                                      int64_t mode, int64_t downdate) {
   auto bdims = b.dimensions();
   if (bdims.size() < 1 || bdims.size() > 2)
-    return ffi::Error::InvalidArgument("cholgraph: b must be 1D or 2D");
+    return ffi::Error::InvalidArgument("sparsax: b must be 1D or 2D");
   int64_t n = bdims[0];
   int64_t nrhs = bdims.size() == 2 ? bdims[1] : 1;
   int64_t nnz = static_cast<int64_t>(Ai.element_count());
   if (static_cast<int64_t>(Aj.element_count()) != nnz ||
       static_cast<int64_t>(Ax.element_count()) != nnz)
     return ffi::Error::InvalidArgument(
-        "cholgraph: Ai, Aj, Ax must have the same length");
+        "sparsax: Ai, Aj, Ax must have the same length");
   auto cdims = C.dimensions();
   if (cdims.size() != 2 || cdims[0] != n)
     return ffi::Error::InvalidArgument(
-        "cholgraph: C must have shape (n, k) matching b's dimension n");
+        "sparsax: C must have shape (n, k) matching b's dimension n");
   int64_t k = cdims[1];
   if (mode < 0 || mode > 8)
-    return ffi::Error::InvalidArgument("cholgraph: invalid solve mode");
+    return ffi::Error::InvalidArgument("sparsax: invalid solve mode");
 
   std::lock_guard<std::mutex> lock(g_mutex);
   ensure_started_locked();
@@ -946,7 +947,7 @@ static ffi::Error UpdownSolveF64Impl(ffi::Buffer<ffi::S32> Ai,
   if (e->Lupd) cholmod_free_factor(&e->Lupd, &g_common);
   e->Lupd = cholmod_copy_factor(e->Lldl, &g_common);
   if (!e->Lupd)
-    return ffi::Error::Internal("cholgraph: cholmod_copy_factor failed");
+    return ffi::Error::Internal("sparsax: cholmod_copy_factor failed");
 
   // Build sparse C (n x k) from the dense, row-major input via a column-major
   // temporary. cholmod_updown works in the factor's permuted space
@@ -973,18 +974,18 @@ static ffi::Error UpdownSolveF64Impl(ffi::Buffer<ffi::S32> Ai,
 
   cholmod_sparse* Cs = cholmod_dense_to_sparse(&Cd, /*values=*/1, &g_common);
   if (!Cs)
-    return ffi::Error::Internal("cholgraph: cholmod_dense_to_sparse failed");
+    return ffi::Error::Internal("sparsax: cholmod_dense_to_sparse failed");
 
   int ok = cholmod_updown(downdate ? 0 : 1, Cs, e->Lupd, &g_common);
   cholmod_free_sparse(&Cs, &g_common);
   if (!ok || g_common.status < CHOLMOD_OK)
-    return ffi::Error::Internal("cholgraph: cholmod_updown failed (status " +
+    return ffi::Error::Internal("sparsax: cholmod_updown failed (status " +
                                 std::to_string(g_common.status) + ")");
 
   double ld = factor_logdet(e->Lupd);
   if (!std::isfinite(ld))
     return ffi::Error::Internal(
-        "cholgraph: updated matrix A ± C C' is not positive definite");
+        "sparsax: updated matrix A ± C C' is not positive definite");
   out_logdet->typed_data()[0] = ld;
 
   std::vector<double> scratch;
@@ -1007,7 +1008,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(CholmodUpdownSolveF64, UpdownSolveF64Impl,
 // ---------------------------------------------------------------------------
 // Numpy-callable core (framework-agnostic, no XLA). These call the same cached
 // CHOLMOD core as the FFI handlers but take and return plain numpy arrays, so
-// non-JAX frontends — the PyTensor Ops in cholgraph.pytensor — can reach the
+// non-JAX frontends — the PyTensor Ops in sparsax.pytensor — can reach the
 // solver and its selected-inverse gradient without going through XLA. Errors
 // are raised as Python exceptions.
 // ---------------------------------------------------------------------------
@@ -1021,7 +1022,7 @@ static void check_coo_np(const ArrI32& Ai, const ArrI32& Aj, const ArrF64& Ax,
   if (static_cast<int64_t>(Aj.shape(0)) != nnz || Ax.ndim() != 1 ||
       static_cast<int64_t>(Ax.shape(0)) != nnz)
     throw std::runtime_error(
-        "cholgraph: Ai, Aj, Ax must be 1D with the same length");
+        "sparsax: Ai, Aj, Ax must be 1D with the same length");
 }
 
 static nb::ndarray<nb::numpy, double> solve_np(ArrI32 Ai, ArrI32 Aj, ArrF64 Ax,
@@ -1029,9 +1030,9 @@ static nb::ndarray<nb::numpy, double> solve_np(ArrI32 Ai, ArrI32 Aj, ArrF64 Ax,
   int64_t nnz = static_cast<int64_t>(Ai.shape(0));
   check_coo_np(Ai, Aj, Ax, nnz);
   if (b.ndim() < 1 || b.ndim() > 2)
-    throw std::runtime_error("cholgraph: b must be 1D or 2D");
+    throw std::runtime_error("sparsax: b must be 1D or 2D");
   if (mode < 0 || mode > 8)
-    throw std::runtime_error("cholgraph: invalid solve mode");
+    throw std::runtime_error("sparsax: invalid solve mode");
   int64_t n = static_cast<int64_t>(b.shape(0));
   int64_t nrhs = b.ndim() == 2 ? static_cast<int64_t>(b.shape(1)) : 1;
 
@@ -1046,7 +1047,7 @@ static nb::ndarray<nb::numpy, double> solve_np(ArrI32 Ai, ArrI32 Aj, ArrF64 Ax,
     std::vector<double> scratch;
     ffi::Error r = solve_one_locked(e, e->L, static_cast<int>(mode), b.data(), n,
                                     nrhs, out, &scratch);
-    if (r.failure()) throw std::runtime_error("cholgraph: solve failed");
+    if (r.failure()) throw std::runtime_error("sparsax: solve failed");
   }
   if (b.ndim() == 2)
     return nb::ndarray<nb::numpy, double>(
@@ -1077,7 +1078,7 @@ static nb::ndarray<nb::numpy, double> selinv_np(ArrI32 Ai, ArrI32 Aj, ArrF64 Ax,
     PatternEntry* e =
         prepare_entry_locked(Ai.data(), Aj.data(), Ax.data(), nnz, n);
     ffi::Error r = selinv_locked(e, nnz, out);
-    if (r.failure()) throw std::runtime_error("cholgraph: selinv failed");
+    if (r.failure()) throw std::runtime_error("sparsax: selinv failed");
   }
   return nb::ndarray<nb::numpy, double>(out, {static_cast<size_t>(nnz)}, owner);
 }
@@ -1099,27 +1100,44 @@ static nb::ndarray<nb::numpy, double> selinv_np(ArrI32 Ai, ArrI32 Aj, ArrF64 Ax,
 // factorisation reuse while running the whole batch in one native FFI call.
 // ===========================================================================
 
-static klu_common g_klu_common;
-static bool g_klu_started = false;
-// Numeric factors retained per pattern. Must be >= the vmap batch size (chains)
-// for the Krylov-basis reuse to land; solves that fall outside the cache simply
-// refactor. Tunable from Python via set_lu_cache_size.
+// Numeric factors retained per pattern *per thread* (see the thread-local cache
+// below). Small: within one chain a sweep touches only a couple of distinct ρ.
+// Tunable from Python via set_lu_cache_size.
 static size_t g_lu_cache_cap = 32;
 
-static void ensure_klu_started_locked() {
-  if (!g_klu_started) {
-    klu_defaults(&g_klu_common);
-    g_klu_started = true;
+// A numeric factor with refcounted lifetime: the shared cache and any thread
+// currently solving with it both hold a shared_ptr, so evicting it from the
+// cache never frees a factor a concurrent solve is still using.
+struct KluNumericHolder {
+  klu_numeric* num = nullptr;
+  ~KluNumericHolder() {
+    if (num) {
+      klu_common c;
+      klu_defaults(&c);
+      klu_free_numeric(&num, &c);
+    }
   }
-}
+};
+using KluNumPtr = std::shared_ptr<KluNumericHolder>;
 
 struct KluNumericSlot {
   uint64_t hash = 0;
   std::vector<double> Ax;   // COO values that produced `num`, for memcmp verify
-  klu_numeric* num = nullptr;
+  KluNumPtr num;
 };
 
-struct KluPatternEntry {
+// ---------------------------------------------------------------------------
+// Shared, immutable-after-create pattern: the fill-reducing analysis (klu_analyze
+// = AMD/COLAMD ordering + BTF) plus the CSC structure — read-only, so all threads
+// share it without locking (klu_factor / klu_solve treat the symbolic as const).
+// It also owns a content-addressed numeric-factor cache (keyed on Ax) guarded by
+// its own short mutex: threads hold the lock only for the lookup/insert, and run
+// the expensive klu_factor / klu_solve OUTSIDE the lock with a per-thread common,
+// so concurrent per-device (pmap) solves run in parallel.  The cache is shared
+// (not thread-local) so a factor is reused regardless of which XLA thread-pool
+// thread happens to run a given solve.
+// ---------------------------------------------------------------------------
+struct KluPattern {
   int64_t n = 0;
   std::vector<int32_t> Ai, Aj;   // full COO copy, for exact hit verification
   std::vector<int32_t> Ap;       // CSC column pointers, size n+1
@@ -1127,42 +1145,59 @@ struct KluPatternEntry {
   std::vector<int64_t> pos;      // COO k -> CSC slot
   int64_t nnz_csc = 0;
   klu_symbolic* symbolic = nullptr;
-  std::vector<KluNumericSlot> lru;  // content-addressed numeric-factor cache
-  size_t lru_next = 0;              // round-robin eviction cursor
-  std::vector<double> csc_vals;     // scratch: COO values scattered into CSC order
+  std::mutex cache_mtx;             // guards `cache` / `next` only
+  std::vector<KluNumericSlot> cache;
+  size_t next = 0;                  // round-robin eviction cursor
+  ~KluPattern() {
+    if (symbolic) {
+      klu_common c;
+      klu_defaults(&c);
+      klu_free_symbolic(&symbolic, &c);
+    }
+  }
 };
 
-static std::unordered_map<uint64_t,
-                          std::vector<std::unique_ptr<KluPatternEntry>>>
+static std::mutex g_klu_reg_mtx;  // guards the shared pattern registry only
+static std::unordered_map<uint64_t, std::vector<std::shared_ptr<KluPattern>>>
     g_klu_registry;
-static KluPatternEntry* g_klu_last_entry = nullptr;
+// Total numeric (re)factorizations, for tests/introspection (atomic: threaded).
+static std::atomic<int64_t> g_klu_num_factorizations{0};
 
-static void free_klu_entry_locked(KluPatternEntry* e) {
-  for (auto& s : e->lru)
-    if (s.num) klu_free_numeric(&s.num, &g_klu_common);
-  e->lru.clear();
-  if (e->symbolic) klu_free_symbolic(&e->symbolic, &g_klu_common);
-  e->symbolic = nullptr;
+// Serializes the KLU factor/solve calls.  SuiteSparse KLU factor/solve are not
+// safely *concurrent* across threads sharing a Symbolic (they gave wrong draws
+// and no speedup under jax.pmap — KLU parallelises across processes, as the
+// NumPy/joblib path does, not threads), so we serialize the numeric work while
+// keeping the *shared* factor cache (so reuse is thread-agnostic under XLA's
+// thread pool).  Arithmetic-heavy samplers (e.g. cross-section reduced-NB) still
+// win under pmap because their per-device XLA work runs in parallel; this only
+// serializes the (comparatively small) solve.
+static std::mutex g_klu_solve_mtx;
+
+static bool klu_pattern_matches(const KluPattern* e, const int32_t* Ai,
+                                const int32_t* Aj, int64_t nnz, int64_t n) {
+  return e->n == n && e->Ai.size() == static_cast<size_t>(nnz) &&
+         std::memcmp(e->Ai.data(), Ai, nnz * sizeof(int32_t)) == 0 &&
+         std::memcmp(e->Aj.data(), Aj, nnz * sizeof(int32_t)) == 0;
 }
 
 // Build full (non-symmetric) CSC — every entry, sorted by (col, row), duplicates
-// merged — and run klu_analyze. Returns nullptr and sets `err` on failure.
-static KluPatternEntry* create_klu_entry_locked(const int32_t* Ai,
-                                                const int32_t* Aj, int64_t nnz,
-                                                int64_t n, std::string* err) {
+// merged — and run klu_analyze. Caller holds g_klu_reg_mtx.
+static std::shared_ptr<KluPattern> klu_create_pattern_locked(
+    const int32_t* Ai, const int32_t* Aj, int64_t nnz, int64_t n,
+    std::string* err) {
   for (int64_t k = 0; k < nnz; ++k) {
     if (Ai[k] < 0 || Ai[k] >= n || Aj[k] < 0 || Aj[k] >= n) {
-      *err = "cholgraph(klu): COO index out of range for matrix dimension " +
+      *err = "sparsax(klu): COO index out of range for matrix dimension " +
              std::to_string(n);
       return nullptr;
     }
   }
 
-  auto entry = std::make_unique<KluPatternEntry>();
-  entry->n = n;
-  entry->Ai.assign(Ai, Ai + nnz);
-  entry->Aj.assign(Aj, Aj + nnz);
-  entry->pos.assign(nnz, -1);
+  auto e = std::make_shared<KluPattern>();
+  e->n = n;
+  e->Ai.assign(Ai, Ai + nnz);
+  e->Aj.assign(Aj, Aj + nnz);
+  e->pos.assign(nnz, -1);
 
   struct Trip {
     int32_t i, j;
@@ -1180,140 +1215,156 @@ static KluPatternEntry* create_klu_entry_locked(const int32_t* Ai,
     if (t == 0 || trips[t].i != trips[t - 1].i || trips[t].j != trips[t - 1].j)
       ++nnz_csc;
 
-  entry->nnz_csc = nnz_csc;
-  entry->Ap.assign(n + 1, 0);
-  entry->Ci.assign(nnz_csc > 0 ? nnz_csc : 1, 0);
-  entry->csc_vals.assign(nnz_csc > 0 ? nnz_csc : 1, 0.0);
+  e->nnz_csc = nnz_csc;
+  e->Ap.assign(n + 1, 0);
+  e->Ci.assign(nnz_csc > 0 ? nnz_csc : 1, 0);
 
   int64_t slot = -1;
   for (size_t t = 0; t < trips.size(); ++t) {
     if (t == 0 || trips[t].i != trips[t - 1].i ||
         trips[t].j != trips[t - 1].j) {
       ++slot;
-      entry->Ci[slot] = trips[t].i;
-      entry->Ap[trips[t].j + 1] += 1;  // per-column counts, prefix-summed below
+      e->Ci[slot] = trips[t].i;
+      e->Ap[trips[t].j + 1] += 1;  // per-column counts, prefix-summed below
     }
-    entry->pos[trips[t].k] = slot;
+    e->pos[trips[t].k] = slot;
   }
-  for (int64_t j = 0; j < n; ++j) entry->Ap[j + 1] += entry->Ap[j];
+  for (int64_t j = 0; j < n; ++j) e->Ap[j + 1] += e->Ap[j];
 
-  entry->symbolic = klu_analyze(static_cast<int32_t>(n), entry->Ap.data(),
-                                entry->Ci.data(), &g_klu_common);
-  if (!entry->symbolic || g_klu_common.status != KLU_OK) {
-    *err = "cholgraph(klu): klu_analyze failed (status " +
-           std::to_string(g_klu_common.status) + ")";
+  klu_common c;
+  klu_defaults(&c);
+  e->symbolic = klu_analyze(static_cast<int32_t>(n), e->Ap.data(), e->Ci.data(),
+                            &c);
+  if (!e->symbolic || c.status != KLU_OK) {
+    *err = "sparsax(klu): klu_analyze failed (status " +
+           std::to_string(c.status) + ")";
     return nullptr;
   }
 
-  uint64_t h = pattern_hash(Ai, Aj, nnz, n);
-  auto& chain = g_klu_registry[h];
-  chain.push_back(std::move(entry));
-  return chain.back().get();
+  g_klu_registry[pattern_hash(Ai, Aj, nnz, n)].push_back(e);
+  return e;
 }
 
-static bool klu_entry_matches(const KluPatternEntry* e, const int32_t* Ai,
-                             const int32_t* Aj, int64_t nnz, int64_t n) {
-  return e->n == n && e->Ai.size() == static_cast<size_t>(nnz) &&
-         std::memcmp(e->Ai.data(), Ai, nnz * sizeof(int32_t)) == 0 &&
-         std::memcmp(e->Aj.data(), Aj, nnz * sizeof(int32_t)) == 0;
-}
-
-static KluPatternEntry* get_or_create_klu_entry_locked(const int32_t* Ai,
-                                                       const int32_t* Aj,
-                                                       int64_t nnz, int64_t n,
-                                                       std::string* err) {
-  if (g_klu_last_entry && klu_entry_matches(g_klu_last_entry, Ai, Aj, nnz, n))
-    return g_klu_last_entry;
-  KluPatternEntry* found = nullptr;
+static std::shared_ptr<KluPattern> klu_get_pattern(const int32_t* Ai,
+                                                   const int32_t* Aj,
+                                                   int64_t nnz, int64_t n,
+                                                   std::string* err) {
+  std::lock_guard<std::mutex> lk(g_klu_reg_mtx);
   auto it = g_klu_registry.find(pattern_hash(Ai, Aj, nnz, n));
-  if (it != g_klu_registry.end()) {
-    for (auto& e : it->second) {
-      if (klu_entry_matches(e.get(), Ai, Aj, nnz, n)) {
-        found = e.get();
-        break;
-      }
-    }
-  }
-  if (!found) found = create_klu_entry_locked(Ai, Aj, nnz, n, err);
-  if (found) g_klu_last_entry = found;
-  return found;
+  if (it != g_klu_registry.end())
+    for (auto& e : it->second)
+      if (klu_pattern_matches(e.get(), Ai, Aj, nnz, n)) return e;
+  return klu_create_pattern_locked(Ai, Aj, nnz, n, err);
 }
 
-// Return a numeric factor for these COO values, reusing a cached one when the
-// values match (content-addressed LRU) or building a fresh klu_factor otherwise.
-static klu_numeric* klu_get_factor_locked(KluPatternEntry* e, const double* Ax,
-                                          int64_t nnz, std::string* err) {
+// Per-thread KLU common + scratch buffers.  klu_common is a small POD of control
+// params + stats (no heap workspace), so one per thread removes the shared-common
+// serialization; XLA's CPU thread pool can run a chain's solves on different pool
+// threads, so this is keyed on the OS thread, not on the chain (the numeric cache
+// below is shared to make reuse thread-agnostic).
+struct KluThreadLocal {
+  klu_common common;
+  bool ready = false;
+  std::vector<double> csc, work;
+  klu_common* get() {
+    if (!ready) {
+      klu_defaults(&common);
+      ready = true;
+    }
+    return &common;
+  }
+};
+static thread_local KluThreadLocal t_klu;
+
+// Return a refcounted numeric factor for these COO values: hit the pattern's
+// shared cache (short lock) or build a fresh klu_factor OUTSIDE the lock with
+// this thread's own common + scratch, so concurrent solves run in parallel.
+static KluNumPtr klu_get_factor(const std::shared_ptr<KluPattern>& pat,
+                                const double* Ax, int64_t nnz,
+                                std::string* err) {
   uint64_t h = fnv1a(Ax, nnz * sizeof(double), 14695981039346656037ULL);
-  for (auto& s : e->lru) {
-    if (s.num && s.hash == h && s.Ax.size() == static_cast<size_t>(nnz) &&
-        std::memcmp(s.Ax.data(), Ax, nnz * sizeof(double)) == 0)
-      return s.num;
+  {
+    std::lock_guard<std::mutex> lk(pat->cache_mtx);
+    for (auto& s : pat->cache) {
+      if (s.num && s.hash == h && s.Ax.size() == static_cast<size_t>(nnz) &&
+          std::memcmp(s.Ax.data(), Ax, nnz * sizeof(double)) == 0)
+        return s.num;  // shared_ptr copy — safe to use after unlock
+    }
   }
 
-  // Miss: scatter COO values into CSC order, then factor (reusing symbolic).
-  std::fill(e->csc_vals.begin(), e->csc_vals.end(), 0.0);
+  // Miss: scatter + factor outside the lock (per-thread common + scratch).
+  klu_common* c = t_klu.get();
+  t_klu.csc.assign(pat->nnz_csc > 0 ? pat->nnz_csc : 1, 0.0);
   for (int64_t k = 0; k < nnz; ++k)
-    if (e->pos[k] >= 0) e->csc_vals[e->pos[k]] += Ax[k];
+    if (pat->pos[k] >= 0) t_klu.csc[pat->pos[k]] += Ax[k];
 
-  g_klu_common.status = KLU_OK;
-  klu_numeric* num = klu_factor(e->Ap.data(), e->Ci.data(), e->csc_vals.data(),
-                                e->symbolic, &g_klu_common);
-  if (!num || g_klu_common.status != KLU_OK) {
-    if (num) klu_free_numeric(&num, &g_klu_common);
-    *err = "cholgraph(klu): klu_factor failed (status " +
-           std::to_string(g_klu_common.status) +
-           "; matrix may be singular)";
+  c->status = KLU_OK;
+  klu_numeric* raw = klu_factor(pat->Ap.data(), pat->Ci.data(), t_klu.csc.data(),
+                                pat->symbolic, c);
+  if (!raw || c->status != KLU_OK) {
+    if (raw) klu_free_numeric(&raw, c);
+    *err = "sparsax(klu): klu_factor failed (status " +
+           std::to_string(c->status) + "; matrix may be singular)";
     return nullptr;
   }
-  g_num_factorizations++;
+  g_klu_num_factorizations.fetch_add(1, std::memory_order_relaxed);
+  auto holder = std::make_shared<KluNumericHolder>();
+  holder->num = raw;
 
-  if (e->lru.size() < g_lu_cache_cap) {
-    e->lru.push_back({h, std::vector<double>(Ax, Ax + nnz), num});
-  } else {
-    KluNumericSlot& s = e->lru[e->lru_next];
-    if (s.num) klu_free_numeric(&s.num, &g_klu_common);
-    s.hash = h;
-    s.Ax.assign(Ax, Ax + nnz);
-    s.num = num;
-    e->lru_next = (e->lru_next + 1) % e->lru.size();
+  {
+    std::lock_guard<std::mutex> lk(pat->cache_mtx);
+    if (pat->cache.size() < g_lu_cache_cap) {
+      pat->cache.push_back({h, std::vector<double>(Ax, Ax + nnz), holder});
+    } else {
+      KluNumericSlot& s = pat->cache[pat->next];
+      s.hash = h;
+      s.Ax.assign(Ax, Ax + nnz);
+      s.num = holder;  // drops the old shared_ptr; freed once no solve holds it
+      pat->next = (pat->next + 1) % pat->cache.size();
+    }
   }
-  return num;
+  return holder;
 }
 
 // Solve A x = b (trans == false) or A^T x = b (trans == true, used by the VJP)
-// for one right-hand-side block. b/x are row-major (JAX layout); KLU is
-// column-major with leading dimension n, so multi-RHS blocks transpose through
-// `work` and KLU solves in place.
-static ffi::Error klu_solve_one_locked(KluPatternEntry* e, klu_numeric* num,
-                                       bool trans, const double* bdata,
-                                       int64_t n, int64_t nrhs, double* xdata,
-                                       std::vector<double>* work) {
-  work->resize(n * nrhs);
+// for one right-hand-side block, using this thread's common + scratch. b/x are
+// row-major (JAX layout); KLU is column-major with leading dimension n, so
+// multi-RHS blocks transpose through `work` and KLU solves in place.
+//
+// Concurrency: distinct chains carry distinct ρ, hence distinct numeric factors,
+// so concurrent solves touch distinct KLU objects (their per-Numeric work
+// buffers).  The per-chain init jitter makes bit-identical ρ across chains — the
+// only way two threads would share one Numeric in a concurrent solve —
+// vanishingly unlikely.
+static ffi::Error klu_solve_one(const KluPattern* pat, klu_numeric* num,
+                                bool trans, const double* bdata, int64_t n,
+                                int64_t nrhs, double* xdata) {
+  klu_common* c = t_klu.get();
+  std::vector<double>& work = t_klu.work;
+  work.resize(n * nrhs);
   if (nrhs == 1) {
-    std::memcpy(work->data(), bdata, n * sizeof(double));
+    std::memcpy(work.data(), bdata, n * sizeof(double));
   } else {
     for (int64_t i = 0; i < n; ++i)
       for (int64_t j = 0; j < nrhs; ++j)
-        (*work)[i + j * n] = bdata[i * nrhs + j];
+        work[i + j * n] = bdata[i * nrhs + j];
   }
 
-  g_klu_common.status = KLU_OK;
-  int ok = trans ? klu_tsolve(e->symbolic, num, static_cast<int32_t>(n),
-                              static_cast<int32_t>(nrhs), work->data(),
-                              &g_klu_common)
-                 : klu_solve(e->symbolic, num, static_cast<int32_t>(n),
-                             static_cast<int32_t>(nrhs), work->data(),
-                             &g_klu_common);
-  if (!ok || g_klu_common.status != KLU_OK)
-    return ffi::Error::Internal("cholgraph(klu): klu_solve failed (status " +
-                                std::to_string(g_klu_common.status) + ")");
+  c->status = KLU_OK;
+  int ok = trans ? klu_tsolve(pat->symbolic, num, static_cast<int32_t>(n),
+                              static_cast<int32_t>(nrhs), work.data(), c)
+                 : klu_solve(pat->symbolic, num, static_cast<int32_t>(n),
+                             static_cast<int32_t>(nrhs), work.data(), c);
+  if (!ok || c->status != KLU_OK)
+    return ffi::Error::Internal("sparsax(klu): klu_solve failed (status " +
+                                std::to_string(c->status) + ")");
 
   if (nrhs == 1) {
-    std::memcpy(xdata, work->data(), n * sizeof(double));
+    std::memcpy(xdata, work.data(), n * sizeof(double));
   } else {
     for (int64_t i = 0; i < n; ++i)
       for (int64_t j = 0; j < nrhs; ++j)
-        xdata[i * nrhs + j] = (*work)[i + j * n];
+        xdata[i * nrhs + j] = work[i + j * n];
   }
   return ffi::Error::Success();
 }
@@ -1330,29 +1381,30 @@ static ffi::Error LuSolveF64Impl(ffi::Buffer<ffi::S32> Ai,
                                  ffi::ResultBuffer<ffi::F64> x, int64_t trans) {
   auto bdims = b.dimensions();
   if (bdims.size() < 1 || bdims.size() > 2)
-    return ffi::Error::InvalidArgument("cholgraph(klu): b must be 1D or 2D");
+    return ffi::Error::InvalidArgument("sparsax(klu): b must be 1D or 2D");
   int64_t n = bdims[0];
   int64_t nrhs = bdims.size() == 2 ? bdims[1] : 1;
   int64_t nnz = static_cast<int64_t>(Ai.element_count());
   if (static_cast<int64_t>(Aj.element_count()) != nnz ||
       static_cast<int64_t>(Ax.element_count()) != nnz)
     return ffi::Error::InvalidArgument(
-        "cholgraph(klu): Ai, Aj, Ax must have the same length");
+        "sparsax(klu): Ai, Aj, Ax must have the same length");
 
-  std::lock_guard<std::mutex> lock(g_mutex);
-  ensure_klu_started_locked();
-
+  // No global lock: the shared pattern (klu_analyze) is fetched under a short
+  // registry lock; the numeric factor comes from the pattern's shared cache
+  // (short lock), and the klu_factor / klu_solve run with this thread's own
+  // common, so concurrent per-device (pmap) solves run in parallel.  `pat` and
+  // `num` are held (shared_ptr) for the duration, so a concurrent clear_cache /
+  // eviction cannot free them mid-solve.
   std::string err;
-  KluPatternEntry* e =
-      get_or_create_klu_entry_locked(Ai.typed_data(), Aj.typed_data(), nnz, n,
-                                     &err);
-  if (!e) return ffi::Error::InvalidArgument(err);
-  klu_numeric* num = klu_get_factor_locked(e, Ax.typed_data(), nnz, &err);
+  auto pat = klu_get_pattern(Ai.typed_data(), Aj.typed_data(), nnz, n, &err);
+  if (!pat) return ffi::Error::InvalidArgument(err);
+  std::lock_guard<std::mutex> lk(g_klu_solve_mtx);
+  KluNumPtr num = klu_get_factor(pat, Ax.typed_data(), nnz, &err);
   if (!num) return ffi::Error::Internal(err);
 
-  std::vector<double> work;
-  return klu_solve_one_locked(e, num, trans != 0, b.typed_data(), n, nrhs,
-                              x->typed_data(), &work);
+  return klu_solve_one(pat.get(), num->num, trans != 0, b.typed_data(), n, nrhs,
+                       x->typed_data());
 }
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuSolveF64, LuSolveF64Impl,
@@ -1380,7 +1432,7 @@ static ffi::Error LuSolveBatchedF64Impl(ffi::Buffer<ffi::S32> Ai,
   auto bdims = b.dimensions();
   if (bdims.size() < 2 || bdims.size() > 3)
     return ffi::Error::InvalidArgument(
-        "cholgraph(klu): batched b must be 2D or 3D");
+        "sparsax(klu): batched b must be 2D or 3D");
   int64_t batch = bdims[0];
   int64_t n = bdims[1];
   int64_t nrhs = bdims.size() == 3 ? bdims[2] : 1;
@@ -1388,30 +1440,30 @@ static ffi::Error LuSolveBatchedF64Impl(ffi::Buffer<ffi::S32> Ai,
   auto axdims = Ax.dimensions();
   if (axdims.size() != 2 || axdims[0] != batch || axdims[1] != nnz)
     return ffi::Error::InvalidArgument(
-        "cholgraph(klu): batched Ax must have shape (batch, nnz) matching b");
+        "sparsax(klu): batched Ax must have shape (batch, nnz) matching b");
   if (static_cast<int64_t>(Aj.element_count()) != nnz)
     return ffi::Error::InvalidArgument(
-        "cholgraph(klu): Ai, Aj must have the same length");
+        "sparsax(klu): Ai, Aj must have the same length");
 
-  std::lock_guard<std::mutex> lock(g_mutex);
-  ensure_klu_started_locked();
-
+  // Batched path: one FFI call solves a whole vmap batch on a single thread
+  // (this is what jax.vmap lowers to). Uses the shared factor cache, so the m+1
+  // solves of a Krylov basis at a fixed ρ reuse one factor per batch element.
+  // (Multi-core parallelism comes from pmap over the unbatched handler, not this
+  // loop.)
   std::string err;
-  KluPatternEntry* e =
-      get_or_create_klu_entry_locked(Ai.typed_data(), Aj.typed_data(), nnz, n,
-                                     &err);
-  if (!e) return ffi::Error::InvalidArgument(err);
+  auto pat = klu_get_pattern(Ai.typed_data(), Aj.typed_data(), nnz, n, &err);
+  if (!pat) return ffi::Error::InvalidArgument(err);
+  std::lock_guard<std::mutex> lk(g_klu_solve_mtx);
 
   const double* Axd = Ax.typed_data();
   const double* bd = b.typed_data();
   double* xd = x->typed_data();
   int64_t bstride = n * nrhs;
-  std::vector<double> work;
   for (int64_t s = 0; s < batch; ++s) {
-    klu_numeric* num = klu_get_factor_locked(e, Axd + s * nnz, nnz, &err);
+    KluNumPtr num = klu_get_factor(pat, Axd + s * nnz, nnz, &err);
     if (!num) return ffi::Error::Internal(err);
-    ffi::Error r = klu_solve_one_locked(e, num, trans != 0, bd + s * bstride, n,
-                                        nrhs, xd + s * bstride, &work);
+    ffi::Error r = klu_solve_one(pat.get(), num->num, trans != 0,
+                                 bd + s * bstride, n, nrhs, xd + s * bstride);
     if (r.failure()) return r;
   }
   return ffi::Error::Success();
@@ -1430,7 +1482,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuSolveBatchedF64, LuSolveBatchedF64Impl,
 // nanobind module
 // ---------------------------------------------------------------------------
 
-NB_MODULE(cholgraph_cpp, m) {
+NB_MODULE(sparsax_cpp, m) {
   m.doc() = "CHOLMOD sparse Cholesky as XLA FFI custom calls";
 
   m.def("solve_f64_capsule", []() {
@@ -1463,44 +1515,53 @@ NB_MODULE(cholgraph_cpp, m) {
     return nb::capsule(reinterpret_cast<void*>(CholgraphLuSolveBatchedF64));
   });
 
-  // Numeric factors retained per KLU pattern (>= vmap batch size for reuse).
-  m.def("set_lu_cache_size", [](size_t n) {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    g_lu_cache_cap = n < 1 ? 1 : n;
-  });
+  // Numeric factors retained per KLU pattern *per thread* (>= the distinct ρ
+  // touched in a chain's sweep for the Krylov-basis reuse to land).
+  m.def("set_lu_cache_size", [](size_t n) { g_lu_cache_cap = n < 1 ? 1 : n; });
 
-  // Numpy-callable core, for non-JAX frontends (cholgraph.pytensor).
+  // Numpy-callable core, for non-JAX frontends (sparsax.pytensor).
   m.def("solve_np", &solve_np);
   m.def("logdet_np", &logdet_np);
   m.def("selinv_np", &selinv_np);
 
-  // Total numeric (re)factorizations performed, for tests/introspection.
+  // Total numeric (re)factorizations performed, for tests/introspection
+  // (CHOLMOD + KLU across all threads).
   m.def("factorization_count", []() {
     std::lock_guard<std::mutex> lock(g_mutex);
-    return g_num_factorizations;
+    return g_num_factorizations +
+           g_klu_num_factorizations.load(std::memory_order_relaxed);
   });
 
   m.def("clear_cache", []() {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    g_last_entry = nullptr;
-    if (g_started) {
-      for (auto& [h, chain] : g_registry)
-        for (auto& e : chain) free_entry_locked(e.get());
-      g_registry.clear();
+    {
+      std::lock_guard<std::mutex> lock(g_mutex);
+      g_last_entry = nullptr;
+      if (g_started) {
+        for (auto& [h, chain] : g_registry)
+          for (auto& e : chain) free_entry_locked(e.get());
+        g_registry.clear();
+      }
     }
-    g_klu_last_entry = nullptr;
-    if (g_klu_started) {
-      for (auto& [h, chain] : g_klu_registry)
-        for (auto& e : chain) free_klu_entry_locked(e.get());
+    // Drop shared KLU patterns; each pattern owns its numeric-factor cache, so
+    // those factors are freed once no in-flight solve still holds them (they are
+    // refcounted).  (Invoke when the sampler is idle, not concurrently with
+    // active solves.)
+    {
+      std::lock_guard<std::mutex> lk(g_klu_reg_mtx);
       g_klu_registry.clear();
     }
   });
 
   m.def("cache_size", []() {
-    std::lock_guard<std::mutex> lock(g_mutex);
     size_t count = 0;
-    for (auto& [h, chain] : g_registry) count += chain.size();
-    for (auto& [h, chain] : g_klu_registry) count += chain.size();
+    {
+      std::lock_guard<std::mutex> lock(g_mutex);
+      for (auto& [h, chain] : g_registry) count += chain.size();
+    }
+    {
+      std::lock_guard<std::mutex> lk(g_klu_reg_mtx);
+      for (auto& [h, chain] : g_klu_registry) count += chain.size();
+    }
     return count;
   });
 

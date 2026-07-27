@@ -1,7 +1,8 @@
-"""cholgraph: JAX-native sparse Cholesky via CHOLMOD.
+"""sparsax: JAX-native sparse direct solvers via SuiteSparse (CHOLMOD + KLU).
 
-Exposes CHOLMOD's sparse Cholesky factorization as XLA FFI custom calls, so
-solves run at full native speed inside ``@jax.jit`` (and ``lax.scan`` /
+Exposes SuiteSparse's sparse direct factorizations — CHOLMOD (Cholesky, for SPD
+matrices) and KLU (LU, for general non-symmetric matrices) — as XLA FFI custom
+calls, so solves run at full native speed inside ``@jax.jit`` (and ``lax.scan`` /
 ``lax.fori_loop``) with no Python callback overhead.
 
 The matrix is a symmetric positive definite matrix in COO format. Entries on
@@ -17,13 +18,13 @@ refactorization, and solves with unchanged values skip even that.
 Example::
 
     import jax, jax.numpy as jnp
-    import cholgraph
+    import sparsax
 
     jax.config.update("jax_enable_x64", True)
 
     @jax.jit
     def step(Ax, b):
-        return cholgraph.solve(Ai, Aj, Ax, b)   # full CHOLMOD speed in JIT
+        return sparsax.solve(Ai, Aj, Ax, b)   # full CHOLMOD speed in JIT
 
 ``solve`` is differentiable in ``Ax`` and ``b``, and ``logdet`` is
 differentiable in ``Ax`` (reverse mode) via the selected inverse (:func:`selinv`)
@@ -38,9 +39,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-import cholgraph_cpp as _cpp
+import sparsax_cpp as _cpp
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 __all__ = [
     "solve",
     "logdet",
@@ -70,39 +71,39 @@ __all__ = [
 ]
 
 jax.ffi.register_ffi_target(
-    "cholgraph_solve_f64", _cpp.solve_f64_capsule(), platform="cpu"
+    "sparsax_solve_f64", _cpp.solve_f64_capsule(), platform="cpu"
 )
 jax.ffi.register_ffi_target(
-    "cholgraph_solve_batched_f64",
+    "sparsax_solve_batched_f64",
     _cpp.solve_batched_f64_capsule(),
     platform="cpu",
 )
 jax.ffi.register_ffi_target(
-    "cholgraph_logdet_f64", _cpp.logdet_f64_capsule(), platform="cpu"
+    "sparsax_logdet_f64", _cpp.logdet_f64_capsule(), platform="cpu"
 )
 jax.ffi.register_ffi_target(
-    "cholgraph_selinv_f64", _cpp.selinv_f64_capsule(), platform="cpu"
+    "sparsax_selinv_f64", _cpp.selinv_f64_capsule(), platform="cpu"
 )
 jax.ffi.register_ffi_target(
-    "cholgraph_updown_solve_f64",
+    "sparsax_updown_solve_f64",
     _cpp.updown_solve_f64_capsule(),
     platform="cpu",
 )
 jax.ffi.register_ffi_target(
-    "cholgraph_factor_solve_f64",
+    "sparsax_factor_solve_f64",
     _cpp.factor_solve_f64_capsule(),
     platform="cpu",
 )
 jax.ffi.register_ffi_target(
-    "cholgraph_factor_solve_batched_f64",
+    "sparsax_factor_solve_batched_f64",
     _cpp.factor_solve_batched_f64_capsule(),
     platform="cpu",
 )
 jax.ffi.register_ffi_target(
-    "cholgraph_lu_solve_f64", _cpp.lu_solve_f64_capsule(), platform="cpu"
+    "sparsax_lu_solve_f64", _cpp.lu_solve_f64_capsule(), platform="cpu"
 )
 jax.ffi.register_ffi_target(
-    "cholgraph_lu_solve_batched_f64",
+    "sparsax_lu_solve_batched_f64",
     _cpp.lu_solve_batched_f64_capsule(),
     platform="cpu",
 )
@@ -124,7 +125,7 @@ MODE_PT = 8
 def _require_x64():
     if not jax.config.jax_enable_x64:
         raise RuntimeError(
-            "cholgraph requires 64-bit mode. Call "
+            "sparsax requires 64-bit mode. Call "
             'jax.config.update("jax_enable_x64", True) before using it.'
         )
 
@@ -133,7 +134,7 @@ def _solve_batched(Ai, Aj, Ax, b, mode):
     # One FFI call for a whole batch (leading axis 0): Ax is (B, nnz), b is
     # (B, n[, nrhs]); the C++ handler loops over B reusing the cached analysis.
     call = jax.ffi.ffi_call(
-        "cholgraph_solve_batched_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
+        "sparsax_solve_batched_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
     )
     return call(Ai, Aj, Ax, b, mode=np.int64(mode))
 
@@ -149,7 +150,7 @@ def _make_solve_dispatch(mode):
     @jax.custom_batching.custom_vmap
     def dispatch(Ai, Aj, Ax, b):
         call = jax.ffi.ffi_call(
-            "cholgraph_solve_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
+            "sparsax_solve_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
         )
         return call(Ai, Aj, Ax, b, mode=np.int64(mode))
 
@@ -256,7 +257,7 @@ def _lu_solve_batched(Ai, Aj, Ax, b, trans):
     # One FFI call for a whole batch (leading axis 0): the C++ handler loops over
     # B, reusing the cached analysis and the LU factor cache.
     call = jax.ffi.ffi_call(
-        "cholgraph_lu_solve_batched_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
+        "sparsax_lu_solve_batched_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
     )
     return call(Ai, Aj, Ax, b, trans=np.int64(trans))
 
@@ -268,7 +269,7 @@ def _make_lu_dispatch(trans):
     @jax.custom_batching.custom_vmap
     def dispatch(Ai, Aj, Ax, b):
         call = jax.ffi.ffi_call(
-            "cholgraph_lu_solve_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
+            "sparsax_lu_solve_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
         )
         return call(Ai, Aj, Ax, b, trans=np.int64(trans))
 
@@ -370,7 +371,7 @@ def set_lu_cache_size(n):
 
 def _logdet_ffi(Ai, Aj, Ax, n):
     call = jax.ffi.ffi_call(
-        "cholgraph_logdet_f64",
+        "sparsax_logdet_f64",
         jax.ShapeDtypeStruct((), jnp.float64),
         vmap_method="sequential",
     )
@@ -379,7 +380,7 @@ def _logdet_ffi(Ai, Aj, Ax, n):
 
 def _selinv_ffi(Ai, Aj, Ax, n):
     call = jax.ffi.ffi_call(
-        "cholgraph_selinv_f64",
+        "sparsax_selinv_f64",
         jax.ShapeDtypeStruct(Ax.shape, jnp.float64),
         vmap_method="sequential",
     )
@@ -482,7 +483,7 @@ def _make_factor_solve_dispatch(mode_chain, chain_lens, want_logdet, n):
         return shapes
 
     def _unbatched(Ai, Aj, Ax, bs):
-        call = jax.ffi.ffi_call("cholgraph_factor_solve_f64", _out_shapes(bs))
+        call = jax.ffi.ffi_call("sparsax_factor_solve_f64", _out_shapes(bs))
         return tuple(
             call(Ai, Aj, Ax, *bs, mode_chain=mc, chain_lens=cl,
                  want_logdet=wl, n=nn)
@@ -495,7 +496,7 @@ def _make_factor_solve_dispatch(mode_chain, chain_lens, want_logdet, n):
         Ai_b, Aj_b, Ax_b, bs_b = in_batched
         if Ai_b or Aj_b:
             raise ValueError(
-                "cholgraph.factor_solve: cannot vmap over the sparsity "
+                "sparsax.factor_solve: cannot vmap over the sparsity "
                 "pattern (Ai, Aj) — it must be shared across the batch"
             )
         if not Ax_b:
@@ -505,7 +506,7 @@ def _make_factor_solve_dispatch(mode_chain, chain_lens, want_logdet, n):
             for b, bb in zip(bs, bs_b)
         )
         call = jax.ffi.ffi_call(
-            "cholgraph_factor_solve_batched_f64", _out_shapes(bs, axis_size)
+            "sparsax_factor_solve_batched_f64", _out_shapes(bs, axis_size)
         )
         outs = tuple(
             call(Ai, Aj, Ax, *bs, mode_chain=mc, chain_lens=cl,
@@ -667,7 +668,7 @@ def update_solve(Ai, Aj, Ax, C, b, downdate=False, mode=MODE_A, return_logdet=Fa
         raise ValueError("Ai, Aj, Ax must be 1D with equal lengths")
 
     call = jax.ffi.ffi_call(
-        "cholgraph_updown_solve_f64",
+        "sparsax_updown_solve_f64",
         (
             jax.ShapeDtypeStruct(b.shape, b.dtype),
             jax.ShapeDtypeStruct((), jnp.float64),
@@ -697,15 +698,15 @@ def _bcoo_parts(A):
     data = getattr(A, "data", None)
     if idx is None or data is None:
         raise TypeError(
-            "cholgraph: expected a BCOO-like matrix with .indices and .data"
+            "sparsax: expected a BCOO-like matrix with .indices and .data"
         )
     if getattr(A, "n_batch", 0) or getattr(A, "n_dense", 0):
         raise ValueError(
-            "cholgraph: only a plain 2D BCOO (n_batch=0, n_dense=0) is supported"
+            "sparsax: only a plain 2D BCOO (n_batch=0, n_dense=0) is supported"
         )
     if idx.ndim != 2 or idx.shape[-1] != 2:
         raise ValueError(
-            f"cholgraph: expected BCOO indices of shape (nnz, 2), got {idx.shape}"
+            f"sparsax: expected BCOO indices of shape (nnz, 2), got {idx.shape}"
         )
     return idx[:, 0], idx[:, 1], data
 

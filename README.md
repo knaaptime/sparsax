@@ -1,8 +1,8 @@
-[![Continuous Integration](https://github.com/knaaptime/cholgraph/actions/workflows/unittests.yml/badge.svg)](https://github.com/knaaptime/cholgraph/actions/workflows/unittests.yml)
-[![codecov](https://codecov.io/gh/knaaptime/cholgraph/branch/main/graph/badge.svg)](https://codecov.io/gh/knaaptime/cholgraph)
+[![Continuous Integration](https://github.com/knaaptime/sparsax/actions/workflows/unittests.yml/badge.svg)](https://github.com/knaaptime/sparsax/actions/workflows/unittests.yml)
+[![codecov](https://codecov.io/gh/knaaptime/sparsax/branch/main/graph/badge.svg)](https://codecov.io/gh/knaaptime/sparsax)
 
 
-# cholgraph
+# sparsax
 
 JAX & PyTensor -native sparse Cholesky via [CHOLMOD](https://github.com/DrTimothyAldenDavis/SuiteSparse).
 Solves with symmetric positive definite sparse matrices run at full native speed
@@ -33,7 +33,7 @@ boundaries; the caching is transparent.
 
 ```bash
 conda env create -f environment.yml   # suitesparse, jax, nanobind, cmake, ...
-conda activate cholgraph
+conda activate sparsax
 pip install --no-build-isolation .
 ```
 
@@ -43,7 +43,7 @@ pip install --no-build-isolation .
 import jax
 import jax.numpy as jnp
 import numpy as np
-import cholgraph
+import sparsax
 
 jax.config.update("jax_enable_x64", True)   # required: CHOLMOD is float64
 
@@ -54,13 +54,13 @@ Aj = np.array([0, 1, 0, 1, 2, 1, 2], dtype=np.int32)
 Ax = jnp.array([4.0, 1.0, 1.0, 5.0, 2.0, 2.0, 6.0])
 b = jnp.array([1.0, 2.0, 3.0])
 
-x = cholgraph.solve(Ai, Aj, Ax, b)          # eager
-ld = cholgraph.logdet(Ai, Aj, Ax, n=3)      # log|A| from the same factorization
+x = sparsax.solve(Ai, Aj, Ax, b)          # eager
+ld = sparsax.logdet(Ai, Aj, Ax, n=3)      # log|A| from the same factorization
 
 @jax.jit                                      # ...or fully JIT-compiled
 def gibbs_step(Ax, b):
-    x = cholgraph.solve(Ai, Aj, Ax, b)      # full CHOLMOD speed, no callbacks
-    ld = cholgraph.logdet(Ai, Aj, Ax, n=3)  # factorization shared with solve
+    x = sparsax.solve(Ai, Aj, Ax, b)      # full CHOLMOD speed, no callbacks
+    ld = sparsax.logdet(Ai, Aj, Ax, n=3)  # factorization shared with solve
     return x, ld
 ```
 
@@ -75,7 +75,7 @@ Features:
   in C++ (reusing the cached analysis), rather than XLA per-iteration dispatch. Composes with
   `grad` (`vmap(grad(solve))` batches too). Map over `Ax`, `b`, or both.
 - **Multiple right-hand sides**: `b` may be `(n,)` or `(n, n_rhs)`.
-- **Factor-part solves**: `mode=cholgraph.MODE_LT` etc. expose CHOLMOD's solve systems
+- **Factor-part solves**: `mode=sparsax.MODE_LT` etc. expose CHOLMOD's solve systems
   (`P' L L' P = A`). Sampling `y ~ N(0, A^{-1})`:
   `y = solve(..., solve(..., z, mode=MODE_LT), mode=MODE_PT)`.
 - **Not positive definite** → runtime exception (the factor is always a true LL').
@@ -92,19 +92,19 @@ element**, whatever the number of chains.
 ```python
 # Gibbs Gaussian step: posterior mean, a draw ~ N(mean, A^-1), and log|A|,
 # from ONE factorization. eta = mean + P' L^-T z  (since A = P' L L' P).
-eta, mean, ld = cholgraph.sample_gaussian(Ai, Aj, Ax, b, z, want_logdet=True)
+eta, mean, ld = sparsax.sample_gaussian(Ai, Aj, Ax, b, z, want_logdet=True)
 
 # ...or spell it out with the general primitive:
-(mean, w), ld = cholgraph.factor_solve(
+(mean, w), ld = sparsax.factor_solve(
     Ai, Aj, Ax,
-    [(b, cholgraph.MODE_A),                          # A^-1 b
-     (z, (cholgraph.MODE_LT, cholgraph.MODE_PT))],  # P' L^-T z  (chain)
+    [(b, sparsax.MODE_A),                          # A^-1 b
+     (z, (sparsax.MODE_LT, sparsax.MODE_PT))],  # P' L^-T z  (chain)
     want_logdet=True)
 eta = mean + w
 ```
 
 Each `rhs` entry is `(b, modes)` where `modes` is one `MODE_*` or a sequence applied left to
-right. `cholgraph.factorization_count()` reports how many real factorizations have happened —
+right. `sparsax.factorization_count()` reports how many real factorizations have happened —
 handy for confirming the fusion. Benchmarked Gibbs draw (mean + sample + logdet) vmapped over a
 batch of *different* A's: **4× fewer factorizations and ~3.3–3.6× faster** than issuing the
 separate `solve`/`logdet` primitives. `factor_solve` is forward-only (no autodiff rule); use
@@ -119,8 +119,8 @@ sampling backend), VI, or empirical-Bayes/MAP optimization:
 
 ```python
 def neg_log_post(Ax):                                  # up to constants
-    quad = b @ cholgraph.solve(Ai, Aj, Ax, b)         # b' A^-1 b   (solve VJP)
-    return 0.5 * quad - 0.5 * cholgraph.logdet(Ai, Aj, Ax, n)   # log|A| (logdet VJP)
+    quad = b @ sparsax.solve(Ai, Aj, Ax, b)         # b' A^-1 b   (solve VJP)
+    return 0.5 * quad - 0.5 * sparsax.logdet(Ai, Aj, Ax, n)   # log|A| (logdet VJP)
 
 grad_Ax = jax.grad(neg_log_post)(Ax)                   # works under jit / vmap
 ```
@@ -131,7 +131,7 @@ recurrence over the Cholesky factor —
 never the dense inverse. That quantity is exposed directly:
 
 ```python
-z = cholgraph.selinv(Ai, Aj, Ax, n)   # z[k] == (A^-1)[Ai[k], Aj[k]]
+z = sparsax.selinv(Ai, Aj, Ax, n)   # z[k] == (A^-1)[Ai[k], Aj[k]]
 var = z[Ai == Aj]                      # diag(A^-1): Gaussian marginal variances
 ```
 
@@ -147,12 +147,12 @@ solve and log-determinant without going through JAX/XLA. It's an optional extra 
 the base package stays JAX-only:
 
 ```bash
-pip install "cholgraph[pytensor]"
+pip install "sparsax[pytensor]"
 ```
 
 ```python
 import pytensor.tensor as pt
-import cholgraph.pytensor as cjpt
+import sparsax.pytensor as cjpt
 
 Ax = pt.dvector("Ax")                 # the precision-matrix values (θ-dependent)
 # Gaussian log-density (up to constants); grad flows into Ax
@@ -194,9 +194,9 @@ JAX's native sparse type is `jax.experimental.sparse.BCOO`, whose `.indices` is 
 from jax.experimental import sparse as jsparse
 A = jsparse.BCOO.fromdense(A_dense)         # or build however you like
 
-x  = cholgraph.solve_bcoo(A, b)            # == solve(A.indices[:,0], A.indices[:,1], A.data, b)
-ld = cholgraph.logdet_bcoo(A)
-x  = cholgraph.update_solve_bcoo(A, c, b)  # rank-k update, as below
+x  = sparsax.solve_bcoo(A, b)            # == solve(A.indices[:,0], A.indices[:,1], A.data, b)
+ld = sparsax.logdet_bcoo(A)
+x  = sparsax.update_solve_bcoo(A, c, b)  # rank-k update, as below
 ```
 
 The analysis-reuse speedup is unaffected: the pattern cache keys on the concrete index values
@@ -214,9 +214,9 @@ factored once; each call is `O(k · path)` where `path` is the elimination-tree 
 
 ```python
 # Add an observation (rank-1, sparse update column) and re-solve, cheaply:
-x = cholgraph.update_solve(Ai, Aj, Ax, c, b)                 # (A + c c') x = b
-x = cholgraph.update_solve(Ai, Aj, Ax, c, b, downdate=True)  # (A - c c') x = b
-x, ld = cholgraph.update_solve(Ai, Aj, Ax, C, b, return_logdet=True)  # C is (n, k)
+x = sparsax.update_solve(Ai, Aj, Ax, c, b)                 # (A + c c') x = b
+x = sparsax.update_solve(Ai, Aj, Ax, c, b, downdate=True)  # (A - c c') x = b
+x, ld = sparsax.update_solve(Ai, Aj, Ax, C, b, return_logdet=True)  # C is (n, k)
 ```
 
 **When it pays off:** the update column(s) `C` must be **sparse** (a few nonzeros — e.g. one
@@ -228,8 +228,8 @@ is never mutated, so `update_solve` is a pure function (works under `jit`; not d
 ## Options
 
 ```python
-cholgraph.set_options(supernodal="simplicial")  # or "auto" (default), "supernodal"
-cholgraph.clear_cache()                         # free cached factorizations
+sparsax.set_options(supernodal="simplicial")  # or "auto" (default), "supernodal"
+sparsax.clear_cache()                         # free cached factorizations
 ```
 
 For very sparse matrices (e.g. planar/grid graphs), `"simplicial"` often gives faster
@@ -249,7 +249,7 @@ CHOLMOD choose based on the matrix.
 - [x] Differentiable `logdet` (reverse-mode in `Ax`) and the `selinv` selected inverse
       (Takahashi recurrence over the factor); pairs with `solve`'s VJP for full
       Gaussian log-density gradients
-- [x] PyTensor frontend (`cholgraph.pytensor`, optional extra) with matching autodiff,
+- [x] PyTensor frontend (`sparsax.pytensor`, optional extra) with matching autodiff,
       for PyMC's default backend / NUTS — a second frontend over the same CHOLMOD core
 - [ ] float32 (CHOLMOD 5 single precision) and int64 indices
 - [ ] Autodiff rule for `factor_solve` (currently forward-only)

@@ -1,9 +1,9 @@
-"""PyTensor frontend for cholgraph (optional; ``pip install cholgraph[pytensor]``).
+"""PyTensor frontend for sparsax (optional; ``pip install sparsax[pytensor]``).
 
 A second frontend over the same cached CHOLMOD core as the JAX API, for use with
 PyMC's default (PyTensor) backend — including gradient-based samplers like NUTS.
 These are pure-Python :class:`pytensor.graph.op.Op` s whose ``perform`` calls the
-numpy-callable core (``cholgraph_cpp.solve_np`` / ``logdet_np`` / ``selinv_np``);
+numpy-callable core (``sparsax_cpp.solve_np`` / ``logdet_np`` / ``selinv_np``);
 they do **not** go through JAX/XLA, so they run under PyTensor's ordinary C/numba
 backend.
 
@@ -13,7 +13,7 @@ matrix values ``Ax`` (the selected inverse :func:`selinv` supplies ``logdet``'s
 gradient). Example::
 
     import pytensor.tensor as pt
-    import cholgraph.pytensor as cjpt
+    import sparsax.pytensor as cjpt
 
     Ax = pt.dvector("Ax")
     # -1/2 b' A^-1 b + 1/2 log|A|  (up to constants); grad flows into Ax
@@ -34,11 +34,11 @@ try:
     from pytensor.gradient import grad_undefined
 except ImportError as exc:  # pragma: no cover - exercised only without pytensor
     raise ImportError(
-        "cholgraph.pytensor requires PyTensor. Install it with "
-        "'pip install cholgraph[pytensor]' (or 'pip install pytensor')."
+        "sparsax.pytensor requires PyTensor. Install it with "
+        "'pip install sparsax[pytensor]' (or 'pip install pytensor')."
     ) from exc
 
-import cholgraph_cpp as _cpp
+import sparsax_cpp as _cpp
 
 from . import MODE_A
 
@@ -190,7 +190,7 @@ class CholmodLogdet(Op):
 
 
 def solve(Ai, Aj, Ax, b, mode=MODE_A):
-    """Solve ``A x = b`` for SPD sparse ``A`` (PyTensor). See :func:`cholgraph.solve`.
+    """Solve ``A x = b`` for SPD sparse ``A`` (PyTensor). See :func:`sparsax.solve`.
 
     ``Ai, Aj`` are the COO pattern (int, non-differentiable); ``Ax`` the values
     and ``b`` the right-hand side(s) carry gradients when ``mode == MODE_A``.
@@ -199,10 +199,10 @@ def solve(Ai, Aj, Ax, b, mode=MODE_A):
 
 
 def logdet(Ai, Aj, Ax, n):
-    """``log|A|`` (PyTensor), differentiable in ``Ax``. See :func:`cholgraph.logdet`."""
+    """``log|A|`` (PyTensor), differentiable in ``Ax``. See :func:`sparsax.logdet`."""
     return CholmodLogdet(int(n))(Ai, Aj, Ax)
 
 
 def selinv(Ai, Aj, Ax, n):
-    """Selected inverse ``A^-1`` at the pattern (PyTensor). See :func:`cholgraph.selinv`."""
+    """Selected inverse ``A^-1`` at the pattern (PyTensor). See :func:`sparsax.selinv`."""
     return CholmodSelinv(int(n))(Ai, Aj, Ax)
