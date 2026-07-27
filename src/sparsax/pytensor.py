@@ -42,7 +42,14 @@ import sparsax_cpp as _cpp
 
 from . import MODE_A
 
-__all__ = ["solve", "logdet", "selinv", "CholmodSolve", "CholmodLogdet", "CholmodSelinv"]
+__all__ = [
+    "solve",
+    "logdet",
+    "selinv",
+    "CholmodSolve",
+    "CholmodLogdet",
+    "CholmodSelinv",
+]
 
 
 def _coo(Ai, Aj):

@@ -485,8 +485,7 @@ def _make_factor_solve_dispatch(mode_chain, chain_lens, want_logdet, n):
     def _unbatched(Ai, Aj, Ax, bs):
         call = jax.ffi.ffi_call("sparsax_factor_solve_f64", _out_shapes(bs))
         return tuple(
-            call(Ai, Aj, Ax, *bs, mode_chain=mc, chain_lens=cl,
-                 want_logdet=wl, n=nn)
+            call(Ai, Aj, Ax, *bs, mode_chain=mc, chain_lens=cl, want_logdet=wl, n=nn)
         )
 
     dispatch = jax.custom_batching.custom_vmap(_unbatched)
@@ -509,8 +508,7 @@ def _make_factor_solve_dispatch(mode_chain, chain_lens, want_logdet, n):
             "sparsax_factor_solve_batched_f64", _out_shapes(bs, axis_size)
         )
         outs = tuple(
-            call(Ai, Aj, Ax, *bs, mode_chain=mc, chain_lens=cl,
-                 want_logdet=wl, n=nn)
+            call(Ai, Aj, Ax, *bs, mode_chain=mc, chain_lens=cl, want_logdet=wl, n=nn)
         )
         return outs, (True,) * len(outs)
 
@@ -610,7 +608,9 @@ def sample_gaussian(Ai, Aj, Ax, b, z, want_logdet=False):
         ``(eta, mean)``, or ``(eta, mean, logdet)`` if ``want_logdet``.
     """
     xs = factor_solve(
-        Ai, Aj, Ax,
+        Ai,
+        Aj,
+        Ax,
         [(b, MODE_A), (z, (MODE_LT, MODE_PT))],
         want_logdet=want_logdet,
     )
@@ -697,9 +697,7 @@ def _bcoo_parts(A):
     idx = getattr(A, "indices", None)
     data = getattr(A, "data", None)
     if idx is None or data is None:
-        raise TypeError(
-            "sparsax: expected a BCOO-like matrix with .indices and .data"
-        )
+        raise TypeError("sparsax: expected a BCOO-like matrix with .indices and .data")
     if getattr(A, "n_batch", 0) or getattr(A, "n_dense", 0):
         raise ValueError(
             "sparsax: only a plain 2D BCOO (n_batch=0, n_dense=0) is supported"

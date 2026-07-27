@@ -8,7 +8,6 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 import scipy.sparse as sp
-
 import sparsax
 
 
@@ -290,7 +289,9 @@ class TestFactorSolve:
         sparsax.clear_cache()
         c0 = sparsax.factorization_count()
         (mean, w), ld = sparsax.factor_solve(
-            Ai, Aj, Ax,
+            Ai,
+            Aj,
+            Ax,
             [(b, sparsax.MODE_A), (z, (sparsax.MODE_LT, sparsax.MODE_PT))],
             want_logdet=True,
         )
@@ -302,7 +303,9 @@ class TestFactorSolve:
         # the defining property Cov: w has A^{-1} covariance <=> (L' P w) == z.
         # Simpler exact check: separate calls reproduce the same w.
         w_ref = sparsax.solve(
-            Ai, Aj, Ax,
+            Ai,
+            Aj,
+            Ax,
             sparsax.solve(Ai, Aj, Ax, z, mode=sparsax.MODE_LT),
             mode=sparsax.MODE_PT,
         )
@@ -322,9 +325,7 @@ class TestFactorSolve:
 
     def test_logdet_only_empty_rhs(self, spd):
         Ai, Aj, Ax, A = spd
-        (xs, ld) = sparsax.factor_solve(
-            Ai, Aj, Ax, [], want_logdet=True, n=A.shape[0]
-        )
+        (xs, ld) = sparsax.factor_solve(Ai, Aj, Ax, [], want_logdet=True, n=A.shape[0])
         assert xs == []
         np.testing.assert_allclose(float(ld), np.linalg.slogdet(A)[1], rtol=1e-10)
 
@@ -346,9 +347,10 @@ class TestFactorSolve:
         @jax.jit
         def f(Ax, b, z):
             (mean, w), ld = sparsax.factor_solve(
-                Ai, Aj, Ax,
-                [(b, sparsax.MODE_A),
-                 (z, (sparsax.MODE_LT, sparsax.MODE_PT))],
+                Ai,
+                Aj,
+                Ax,
+                [(b, sparsax.MODE_A), (z, (sparsax.MODE_LT, sparsax.MODE_PT))],
                 want_logdet=True,
             )
             return mean, w, ld
@@ -394,9 +396,7 @@ class TestFactorSolve:
         # 4 elements, each needs mean+sample+... but ONE factorization apiece
         assert sparsax.factorization_count() - c0 == 4
         for i, s in enumerate(scales):
-            np.testing.assert_allclose(
-                means[i], np.linalg.solve(s * A, b), rtol=1e-10
-            )
+            np.testing.assert_allclose(means[i], np.linalg.solve(s * A, b), rtol=1e-10)
 
     def test_vmap_lowers_to_single_batched_call(self, spd):
         Ai, Aj, Ax, A = spd
@@ -431,9 +431,7 @@ class TestSampleGaussian:
         np.testing.assert_allclose(mean, np.linalg.solve(A, b), rtol=1e-10)
         # empirical covariance of many draws ~ A^{-1}
         zs = rng.normal(size=(6000, n))
-        etas = jax.vmap(
-            lambda z: sparsax.sample_gaussian(Ai, Aj, Ax, b, z)[0]
-        )(zs)
+        etas = jax.vmap(lambda z: sparsax.sample_gaussian(Ai, Aj, Ax, b, z)[0])(zs)
         emp = np.cov(np.asarray(etas).T)
         np.testing.assert_allclose(emp, np.linalg.inv(A), atol=0.05)
 
@@ -443,9 +441,7 @@ class TestSampleGaussian:
         rng = np.random.default_rng(28)
         b = rng.normal(size=n)
         z = rng.normal(size=n)
-        eta, mean, ld = sparsax.sample_gaussian(
-            Ai, Aj, Ax, b, z, want_logdet=True
-        )
+        eta, mean, ld = sparsax.sample_gaussian(Ai, Aj, Ax, b, z, want_logdet=True)
         np.testing.assert_allclose(float(ld), np.linalg.slogdet(A)[1], rtol=1e-10)
         np.testing.assert_allclose(mean, np.linalg.solve(A, b), rtol=1e-10)
 
@@ -601,7 +597,9 @@ class TestLogdetGrad:
     def test_grad_matches_finite_differences(self, spd):
         Ai, Aj, Ax, A = spd
         n = A.shape[0]
-        g = np.asarray(jax.grad(lambda x: sparsax.logdet(Ai, Aj, x, n))(jnp.asarray(Ax)))
+        g = np.asarray(
+            jax.grad(lambda x: sparsax.logdet(Ai, Aj, x, n))(jnp.asarray(Ax))
+        )
 
         def dense_logdet(Axv):
             Ad = np.zeros_like(A)
