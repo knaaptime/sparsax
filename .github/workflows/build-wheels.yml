@@ -38,8 +38,6 @@ jobs:
           - os: windows-2022
             arch: AMD64
     runs-on: ${{ matrix.os }}
-    environment:
-      name: pypi  # <-- Set your environment name here
     env:
       CIBW_BUILD: "cp311-* cp312-* cp313-* cp314-*"
       # jaxlib (needed at build time for XLA FFI headers) has no musllinux
@@ -147,6 +145,7 @@ jobs:
     name: Publish to PyPI and create release
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
       id-token: write
       contents: write
