@@ -1,0 +1,935 @@
+
+
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+      
+        <link rel="next" href="installation.html">
+      
+      
+      <link rel="icon" href="">
+    
+    
+      
+        <title>sparsax</title>
+      
+    
+    
+      
+        
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+        <link rel="stylesheet" type="text/css" href="_static/sphinx_immaterial_theme.74c816e3f9967dd6e.min.css?v=6cfe2491" />
+        <link rel="stylesheet" type="text/css" href="_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+        <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+        <link rel="stylesheet" type="text/css" href="_static/custom.css?v=91a4ed60" />
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#why" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="#" title="sparsax" class="md-header__button md-logo" aria-label="sparsax" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            sparsax
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              sparsax
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7M9 21v-1h6v1a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1m3-17a5 5 0 0 0-5 5c0 2.05 1.23 3.81 3 4.58V16h4v-2.42c1.77-.77 3-2.53 3-4.58a5 5 0 0 0-5-5"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/knaaptime/sparsax/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    knaaptime/sparsax
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="#" title="sparsax" class="md-nav__button md-logo" aria-label="sparsax" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+    </a>
+    sparsax
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/knaaptime/sparsax/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    knaaptime/sparsax
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+    
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      <a href="#" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>Home</span>
+    
+  </span>
+  
+
+      </a>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="installation.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>Installation</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    <span>API</span>
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            <span>API</span>
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api.html" class="md-nav__link">
+        
+  
+  
+    <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
+  
+  <span class="md-ellipsis">
+    <span title="sparsax.pytensor.CholmodSolve.__init__.mode (Python parameter)"><span>API reference</span></span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    <span>References</span>
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            <span>References</span>
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="references.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>Bibliography</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary">
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Why?</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>How it works</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Installation</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Quick start</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#factor-once-do-everything-factor-solve-sample-gaussian" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Factor once, do everything:<wbr> factor_<wbr>solve / sample_<wbr>gaussian</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gradients-the-selected-inverse" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Gradients &amp; the selected inverse</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pymc-pytensor-nuts" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Py<wbr>MC / Py<wbr>Tensor <wbr>(NUTS)</span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PyMC / PyTensor (NUTS)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#use-the-c-backend-not-numba" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Use the C backend, not numba</span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jax-sparse-bcoo" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>JAX sparse <wbr>(BCOO)</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rank-k-update-downdate" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Rank-<wbr>k update / downdate</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Options</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-roadmap" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Status / roadmap</span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset" role="main">
+                
+                
+                  
+
+
+  
+    <a href="https://github.com/knaaptime/sparsax/blob/main/docs/index.md" title="Edit this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 9h5.5L13 3.5zM6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4c0-1.11.89-2 2-2m.12 13.5 3.74 3.74 1.42-1.41-2.33-2.33 2.33-2.33-1.42-1.41zm11.16 0-3.74-3.74-1.42 1.41 2.33 2.33-2.33 2.33 1.42 1.41z"/></svg>
+    </a>
+  
+  
+
+<p><a class="reference external" href="https://github.com/knaaptime/sparsax/actions/workflows/unittests.yml"><img alt="Continuous Integration" src="https://github.com/knaaptime/sparsax/actions/workflows/unittests.yml/badge.svg" /></a>
+<a class="reference external" href="https://codecov.io/gh/knaaptime/sparsax"><img alt="codecov" src="https://codecov.io/gh/knaaptime/sparsax/branch/main/graph/badge.svg" /></a></p>
+<h1 id="sparsax">sparsax<a class="headerlink" href="#sparsax" title="Link to this heading">¶</a></h1>
+<p>JAX &amp; PyTensor -native sparse Cholesky via <a class="reference external" href="https://github.com/DrTimothyAldenDavis/SuiteSparse">CHOLMOD</a>.
+Solves with symmetric positive definite sparse matrices run at full native speed
+<strong>inside <code class="docutils literal notranslate"><span class="pre">&#64;jax.jit</span></code></strong> (and <code class="docutils literal notranslate"><span class="pre">lax.scan</span></code> / <code class="docutils literal notranslate"><span class="pre">lax.fori_loop</span></code>) — no Python callback overhead.</p>
+<h2 id="why">Why?<a class="headerlink" href="#why" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>No open-source JIT framework (JAX, PyTorch, TensorFlow) exposes sparse Cholesky as a
+compilable primitive; <a class="reference external" href="https://github.com/florislaporte/klujax"><code class="docutils literal notranslate"><span class="pre">klujax</span></code></a> covers sparse LU,
+which is ~2× slower than Cholesky for SPD systems.</p></li>
+<li><p>The target workload is Gibbs samplers (e.g. Bayesian spatial econometrics), where an SPD
+precision matrix is solved thousands of times with the same sparsity pattern but changing
+values, inside a JIT-compiled loop.</p></li>
+<li><p>Benchmarks (M-series macOS, 2D grid Laplacian, values changing every iteration): matches a
+hand-written scikit-sparse Python loop per iteration and is ~2.7× faster than
+<code class="docutils literal notranslate"><span class="pre">scipy.sparse.linalg.splu</span></code>, while running entirely inside <code class="docutils literal notranslate"><span class="pre">jax.jit</span></code>.</p></li>
+</ul>
+<h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code> are <a class="reference external" href="https://docs.jax.dev/en/latest/ffi.html">XLA FFI</a> custom calls into
+CHOLMOD. The extension caches symbolic analyses (fill-reducing ordering + elimination tree)
+keyed on the sparsity pattern, so repeated calls with the same pattern only pay for the numeric
+refactorization — and calls with unchanged values skip even that, sharing one factorization
+between <code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code>. There are no handles to manage and nothing to pass through JIT
+boundaries; the caching is transparent.</p>
+<h2 id="installation">Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><code>conda<span class="w"> </span>env<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>environment.yml<span class="w">   </span><span class="c1"># suitesparse, jax, nanobind, cmake, ...</span>
+conda<span class="w"> </span>activate<span class="w"> </span>sparsax
+pip<span class="w"> </span>install<span class="w"> </span>--no-build-isolation<span class="w"> </span>.
+</code></pre></div>
+</div>
+<h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sparsax</span>
+
+<span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;jax_enable_x64&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>   <span class="c1"># required: CHOLMOD is float64</span>
+
+<span class="c1"># SPD matrix in COO form. Entries with Ai &lt;= Aj are used (upper triangle);</span>
+<span class="c1"># pass the full symmetric matrix or just its upper triangle.</span>
+<span class="n">Ai</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<span class="n">Aj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<span class="n">Ax</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">4.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">])</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">])</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>          <span class="c1"># eager</span>
+<span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>      <span class="c1"># log|A| from the same factorization</span>
+
+<span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>                                      <span class="c1"># ...or fully JIT-compiled</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">gibbs_step</span><span class="p">(</span><span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>      <span class="c1"># full CHOLMOD speed, no callbacks</span>
+    <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>  <span class="c1"># factorization shared with solve</span>
+    <span class="k">return</span> <span class="n">x</span><span class="p">,</span> <span class="n">ld</span>
+</code></pre></div>
+</div>
+<p>Features:</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">jit</span></code> / <code class="docutils literal notranslate"><span class="pre">lax.scan</span></code></strong>: the symbolic analysis is computed once and reused across iterations.</p></li>
+<li><p><strong>Autodiff</strong>: <code class="docutils literal notranslate"><span class="pre">solve</span></code> has a custom VJP (reverse-mode) in both <code class="docutils literal notranslate"><span class="pre">Ax</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span></code>;
+<code class="docutils literal notranslate"><span class="pre">logdet</span></code> has one in <code class="docutils literal notranslate"><span class="pre">Ax</span></code> (via the selected inverse — see below). Together they
+give the gradient of a Gaussian log-density, so the precision matrix’s values
+can be fit by gradient-based inference (HMC/NUTS, empirical Bayes).</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">vmap</span></code></strong>: <code class="docutils literal notranslate"><span class="pre">jax.vmap(solve)</span></code> lowers to a <em>single</em> native FFI call that loops over the batch
+in C++ (reusing the cached analysis), rather than XLA per-iteration dispatch. Composes with
+<code class="docutils literal notranslate"><span class="pre">grad</span></code> (<code class="docutils literal notranslate"><span class="pre">vmap(grad(solve))</span></code> batches too). Map over <code class="docutils literal notranslate"><span class="pre">Ax</span></code>, <code class="docutils literal notranslate"><span class="pre">b</span></code>, or both.</p></li>
+<li><p><strong>Multiple right-hand sides</strong>: <code class="docutils literal notranslate"><span class="pre">b</span></code> may be <code class="docutils literal notranslate"><span class="pre">(n,)</span></code> or <code class="docutils literal notranslate"><span class="pre">(n,</span> <span class="pre">n_rhs)</span></code>.</p></li>
+<li><p><strong>Factor-part solves</strong>: <code class="docutils literal notranslate"><span class="pre">mode=sparsax.MODE_LT</span></code> etc. expose CHOLMOD’s solve systems
+(<code class="docutils literal notranslate"><span class="pre">P'</span> <span class="pre">L</span> <span class="pre">L'</span> <span class="pre">P</span> <span class="pre">=</span> <span class="pre">A</span></code>). Sampling <code class="docutils literal notranslate"><span class="pre">y</span> <span class="pre">~</span> <span class="pre">N(0,</span> <span class="pre">A^{-1})</span></code>:
+<code class="docutils literal notranslate"><span class="pre">y</span> <span class="pre">=</span> <span class="pre">solve(...,</span> <span class="pre">solve(...,</span> <span class="pre">z,</span> <span class="pre">mode=MODE_LT),</span> <span class="pre">mode=MODE_PT)</span></code>.</p></li>
+<li><p><strong>Not positive definite</strong> → runtime exception (the factor is always a true LL’).</p></li>
+</ul>
+<h2 id="factor-once-do-everything-factor-solve-sample-gaussian">Factor once, do everything: <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> / <code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code><a class="headerlink" href="#factor-once-do-everything-factor-solve-sample-gaussian" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code> are separate primitives, so a Gibbs sweep that needs a posterior mean, a
+correlated draw, and a log-determinant factors the <em>same</em> A several times — and under <code class="docutils literal notranslate"><span class="pre">vmap</span></code>
+that is one factorization per solve <strong>per batch element</strong>. <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> factors A once and
+serves every requested solve (each a <em>chain</em> of <code class="docutils literal notranslate"><span class="pre">MODE_*</span></code> codes) plus an optional <code class="docutils literal notranslate"><span class="pre">logdet</span></code> from
+that single factor. Under <code class="docutils literal notranslate"><span class="pre">vmap</span></code> it lowers to one batched FFI call that factors <strong>once per
+element</strong>, whatever the number of chains.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="c1"># Gibbs Gaussian step: posterior mean, a draw ~ N(mean, A^-1), and log|A|,</span>
+<span class="c1"># from ONE factorization. eta = mean + P&#39; L^-T z  (since A = P&#39; L L&#39; P).</span>
+<span class="n">eta</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">sample_gaussian</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">want_logdet</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="c1"># ...or spell it out with the general primitive:</span>
+<span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">w</span><span class="p">),</span> <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">factor_solve</span><span class="p">(</span>
+    <span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span>
+    <span class="p">[(</span><span class="n">b</span><span class="p">,</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_A</span><span class="p">),</span>                          <span class="c1"># A^-1 b</span>
+     <span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="p">(</span><span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_LT</span><span class="p">,</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_PT</span><span class="p">))],</span>  <span class="c1"># P&#39; L^-T z  (chain)</span>
+    <span class="n">want_logdet</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">eta</span> <span class="o">=</span> <span class="n">mean</span> <span class="o">+</span> <span class="n">w</span>
+</code></pre></div>
+</div>
+<p>Each <code class="docutils literal notranslate"><span class="pre">rhs</span></code> entry is <code class="docutils literal notranslate"><span class="pre">(b,</span> <span class="pre">modes)</span></code> where <code class="docutils literal notranslate"><span class="pre">modes</span></code> is one <code class="docutils literal notranslate"><span class="pre">MODE_*</span></code> or a sequence applied left to
+right. <code class="docutils literal notranslate"><span class="pre">sparsax.factorization_count()</span></code> reports how many real factorizations have happened —
+handy for confirming the fusion. Benchmarked Gibbs draw (mean + sample + logdet) vmapped over a
+batch of <em>different</em> A’s: <strong>4× fewer factorizations and ~3.3–3.6× faster</strong> than issuing the
+separate <code class="docutils literal notranslate"><span class="pre">solve</span></code>/<code class="docutils literal notranslate"><span class="pre">logdet</span></code> primitives. <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> is forward-only (no autodiff rule); use
+<code class="docutils literal notranslate"><span class="pre">solve</span></code>/<code class="docutils literal notranslate"><span class="pre">logdet</span></code> when you need gradients.</p>
+<h2 id="gradients-the-selected-inverse">Gradients &amp; the selected inverse<a class="headerlink" href="#gradients-the-selected-inverse" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code> are the two halves of a Gaussian log-density’s gradient, so
+a precision matrix <code class="docutils literal notranslate"><span class="pre">A(θ)</span></code> with a fixed pattern and θ-dependent values can be fit
+by gradient-based inference — HMC/NUTS (e.g. via numpyro/blackjax, or PyMC’s JAX
+sampling backend), VI, or empirical-Bayes/MAP optimization:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">neg_log_post</span><span class="p">(</span><span class="n">Ax</span><span class="p">):</span>                                  <span class="c1"># up to constants</span>
+    <span class="n">quad</span> <span class="o">=</span> <span class="n">b</span> <span class="o">@</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>         <span class="c1"># b&#39; A^-1 b   (solve VJP)</span>
+    <span class="k">return</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">quad</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>   <span class="c1"># log|A| (logdet VJP)</span>
+
+<span class="n">grad_Ax</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">grad</span><span class="p">(</span><span class="n">neg_log_post</span><span class="p">)(</span><span class="n">Ax</span><span class="p">)</span>                   <span class="c1"># works under jit / vmap</span>
+</code></pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">logdet</span></code>’s reverse-mode rule uses that <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">log|A|</span> <span class="pre">/</span> <span class="pre">dA</span> <span class="pre">=</span> <span class="pre">A^{-1}</span></code>, evaluated <strong>only
+at <code class="docutils literal notranslate"><span class="pre">A</span></code>’s sparsity pattern</strong> by Takahashi’s selected-inversion
+recurrence over the Cholesky factor —
+never the dense inverse. That quantity is exposed directly:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="n">z</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">selinv</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>   <span class="c1"># z[k] == (A^-1)[Ai[k], Aj[k]]</span>
+<span class="n">var</span> <span class="o">=</span> <span class="n">z</span><span class="p">[</span><span class="n">Ai</span> <span class="o">==</span> <span class="n">Aj</span><span class="p">]</span>                      <span class="c1"># diag(A^-1): Gaussian marginal variances</span>
+</code></pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">selinv</span></code> shares the factorization cache, is JIT-compilable and <code class="docutils literal notranslate"><span class="pre">vmap</span></code>-able, and
+costs one selected-inversion pass over the factor (<code class="docutils literal notranslate"><span class="pre">O(nnz(L))</span></code>-ish), not <code class="docutils literal notranslate"><span class="pre">n</span></code>
+solves. <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> / <code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code> remain forward-only.</p>
+<h2 id="pymc-pytensor-nuts">PyMC / PyTensor (NUTS)<a class="headerlink" href="#pymc-pytensor-nuts" title="Link to this heading">¶</a></h2>
+<p>The same CHOLMOD core is exposed as a <strong>PyTensor</strong> frontend for PyMC’s default
+backend, so gradient-based samplers (NUTS) can differentiate through the sparse
+solve and log-determinant without going through JAX/XLA. It’s an optional extra —
+the base package stays JAX-only:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;sparsax[pytensor]&quot;</span>
+</code></pre></div>
+</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pytensor.tensor</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sparsax.pytensor</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">cjpt</span>
+
+<span class="n">Ax</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">dvector</span><span class="p">(</span><span class="s2">&quot;Ax&quot;</span><span class="p">)</span>                 <span class="c1"># the precision-matrix values (θ-dependent)</span>
+<span class="c1"># Gaussian log-density (up to constants); grad flows into Ax</span>
+<span class="n">logp</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">pt</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">cjpt</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">))</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">cjpt</span><span class="o">.</span><span class="n">logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">g</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">grad</span><span class="p">(</span><span class="n">logp</span><span class="p">,</span> <span class="n">Ax</span><span class="p">)</span>                 <span class="c1"># solve VJP + logdet (selected-inverse) VJP</span>
+</code></pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">cjpt.solve</span></code>, <code class="docutils literal notranslate"><span class="pre">cjpt.logdet</span></code>, and <code class="docutils literal notranslate"><span class="pre">cjpt.selinv</span></code> mirror the JAX functions and carry
+the same reverse-mode rules (<code class="docutils literal notranslate"><span class="pre">solve</span></code> in <code class="docutils literal notranslate"><span class="pre">Ax</span></code>/<code class="docutils literal notranslate"><span class="pre">b</span></code>, <code class="docutils literal notranslate"><span class="pre">logdet</span></code> in <code class="docutils literal notranslate"><span class="pre">Ax</span></code>); the pattern
+<code class="docutils literal notranslate"><span class="pre">(Ai,</span> <span class="pre">Aj)</span></code> is non-differentiable data. On PyTensor ≥ 3.1 the gradient routes
+through <code class="docutils literal notranslate"><span class="pre">Op.pullback</span></code>; older versions use <code class="docutils literal notranslate"><span class="pre">grad</span></code>.</p>
+<h3 id="use-the-c-backend-not-numba">Use the C backend, not numba<a class="headerlink" href="#use-the-c-backend-not-numba" title="Link to this heading">¶</a></h3>
+<p>These Ops implement a pure-Python <code class="docutils literal notranslate"><span class="pre">perform</span></code> (it calls the native core, which
+holds no GIL and does the real work — the CHOLMOD call dominates). PyTensor’s
+<strong>C backend</strong> (<code class="docutils literal notranslate"><span class="pre">FAST_RUN</span></code>, the default) calls that <code class="docutils literal notranslate"><span class="pre">perform</span></code> directly with no
+penalty. PyTensor’s <strong>numba backend</strong> cannot JIT a Python <code class="docutils literal notranslate"><span class="pre">perform</span></code>, so it falls
+back to <em>object mode</em> and prints a <code class="docutils literal notranslate"><span class="pre">UserWarning</span></code> on every call — functionally
+correct but with per-call overhead. Prefer the C backend:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pytensor</span>
+
+<span class="n">pytensor</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">mode</span> <span class="o">=</span> <span class="s2">&quot;FAST_RUN&quot;</span>     <span class="c1"># C backend (default); avoids numba object mode</span>
+<span class="c1"># For PyMC, this is the default; if you sample through the numba/JAX linker</span>
+<span class="c1"># instead, drive NUTS via the JAX frontend (numpyro/blackjax) rather than these Ops.</span>
+</code></pre></div>
+</div>
+<p>Concretely: keep PyMC on its default sampler (C backend) to use these Ops, and
+switch to the JAX frontend above if you deliberately run PyMC’s JAX/numba linker.</p>
+<h2 id="jax-sparse-bcoo">JAX sparse (<code class="docutils literal notranslate"><span class="pre">BCOO</span></code>)<a class="headerlink" href="#jax-sparse-bcoo" title="Link to this heading">¶</a></h2>
+<p>JAX’s native sparse type is <code class="docutils literal notranslate"><span class="pre">jax.experimental.sparse.BCOO</span></code>, whose <code class="docutils literal notranslate"><span class="pre">.indices</span></code> is <code class="docutils literal notranslate"><span class="pre">(nnz,</span> <span class="pre">2)</span></code> and
+<code class="docutils literal notranslate"><span class="pre">.data</span></code> is <code class="docutils literal notranslate"><span class="pre">(nnz,)</span></code>. Convenience wrappers accept one directly:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">jax.experimental</span><span class="w"> </span><span class="kn">import</span> <span class="n">sparse</span> <span class="k">as</span> <span class="n">jsparse</span>
+<span class="n">A</span> <span class="o">=</span> <span class="n">jsparse</span><span class="o">.</span><span class="n">BCOO</span><span class="o">.</span><span class="n">fromdense</span><span class="p">(</span><span class="n">A_dense</span><span class="p">)</span>         <span class="c1"># or build however you like</span>
+
+<span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>            <span class="c1"># == solve(A.indices[:,0], A.indices[:,1], A.data, b)</span>
+<span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">logdet_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
+<span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">update_solve_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>  <span class="c1"># rank-k update, as below</span>
+</code></pre></div>
+</div>
+<p>The analysis-reuse speedup is unaffected: the pattern cache keys on the concrete index values
+(exactly a BCOO’s <code class="docutils literal notranslate"><span class="pre">.indices</span></code>), so a stable pattern across <code class="docutils literal notranslate"><span class="pre">jit</span></code>/<code class="docutils literal notranslate"><span class="pre">vmap</span></code> calls keeps hitting the
+cache. A full-symmetric BCOO works directly (only the upper triangle is read), and
+unsorted/duplicate entries are handled. Only a plain 2D BCOO (<code class="docutils literal notranslate"><span class="pre">n_batch=0</span></code>, <code class="docutils literal notranslate"><span class="pre">n_dense=0</span></code>) is
+supported.</p>
+<h2 id="rank-k-update-downdate">Rank-k update / downdate<a class="headerlink" href="#rank-k-update-downdate" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">update_solve</span></code> solves <code class="docutils literal notranslate"><span class="pre">(A</span> <span class="pre">±</span> <span class="pre">C</span> <span class="pre">C')</span> <span class="pre">x</span> <span class="pre">=</span> <span class="pre">b</span></code> by applying CHOLMOD’s <code class="docutils literal notranslate"><span class="pre">cholmod_updown</span></code> to a working
+copy of <code class="docutils literal notranslate"><span class="pre">A</span></code>’s cached factor, instead of refactoring the modified matrix from scratch. <code class="docutils literal notranslate"><span class="pre">A</span></code> is
+factored once; each call is <code class="docutils literal notranslate"><span class="pre">O(k</span> <span class="pre">·</span> <span class="pre">path)</span></code> where <code class="docutils literal notranslate"><span class="pre">path</span></code> is the elimination-tree path touched by
+<code class="docutils literal notranslate"><span class="pre">C</span></code>’s nonzeros.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="c1"># Add an observation (rank-1, sparse update column) and re-solve, cheaply:</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">update_solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>                 <span class="c1"># (A + c c&#39;) x = b</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">update_solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">downdate</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># (A - c c&#39;) x = b</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">update_solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">C</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">return_logdet</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># C is (n, k)</span>
+</code></pre></div>
+</div>
+<p><strong>When it pays off:</strong> the update column(s) <code class="docutils literal notranslate"><span class="pre">C</span></code> must be <strong>sparse</strong> (a few nonzeros — e.g. one
+data point and its neighbors). On the grid-Laplacian benchmark a rank-1 sparse update is ~3×
+faster than a full factorize+solve. A <em>dense</em> <code class="docutils literal notranslate"><span class="pre">C</span></code> walks the whole tree and is slower than
+refactoring — use plain <code class="docutils literal notranslate"><span class="pre">solve</span></code> on the reassembled matrix in that case. The base cached factor
+is never mutated, so <code class="docutils literal notranslate"><span class="pre">update_solve</span></code> is a pure function (works under <code class="docutils literal notranslate"><span class="pre">jit</span></code>; not differentiable).</p>
+<h2 id="options">Options<a class="headerlink" href="#options" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="n">sparsax</span><span class="o">.</span><span class="n">set_options</span><span class="p">(</span><span class="n">supernodal</span><span class="o">=</span><span class="s2">&quot;simplicial&quot;</span><span class="p">)</span>  <span class="c1"># or &quot;auto&quot; (default), &quot;supernodal&quot;</span>
+<span class="n">sparsax</span><span class="o">.</span><span class="n">clear_cache</span><span class="p">()</span>                         <span class="c1"># free cached factorizations</span>
+</code></pre></div>
+</div>
+<p>For very sparse matrices (e.g. planar/grid graphs), <code class="docutils literal notranslate"><span class="pre">&quot;simplicial&quot;</span></code> often gives faster
+triangular solves; <code class="docutils literal notranslate"><span class="pre">&quot;supernodal&quot;</span></code> (BLAS-based) wins on denser problems. <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> lets
+CHOLMOD choose based on the matrix.</p>
+<h2 id="status-roadmap">Status / roadmap<a class="headerlink" href="#status-roadmap" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>[x] <code class="docutils literal notranslate"><span class="pre">solve</span></code> (all CHOLMOD solve modes), <code class="docutils literal notranslate"><span class="pre">logdet</span></code>, symbolic + numeric caching, custom VJP,
+multi-RHS, tests, benchmarks</p></li>
+<li><p>[x] Native batching: <code class="docutils literal notranslate"><span class="pre">jax.vmap(solve)</span></code> → one FFI call looping over the batch in C++</p></li>
+<li><p>[x] <code class="docutils literal notranslate"><span class="pre">cholmod_updown</span></code> rank-k update/downdate (<code class="docutils literal notranslate"><span class="pre">update_solve</span></code>)</p></li>
+<li><p>[x] Cache the simplicial LDL’ base factor for updown (rebuilt only on refactor), so the
+LL’→LDL’ conversion is paid once per base change, not once per call</p></li>
+<li><p>[x] <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> / <code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code>: factor once, serve many solve chains + logdet from
+one factor; fuses under <code class="docutils literal notranslate"><span class="pre">vmap</span></code> to one factorization per batch element</p></li>
+<li><p>[x] Differentiable <code class="docutils literal notranslate"><span class="pre">logdet</span></code> (reverse-mode in <code class="docutils literal notranslate"><span class="pre">Ax</span></code>) and the <code class="docutils literal notranslate"><span class="pre">selinv</span></code> selected inverse
+(Takahashi recurrence over the factor); pairs with <code class="docutils literal notranslate"><span class="pre">solve</span></code>’s VJP for full
+Gaussian log-density gradients</p></li>
+<li><p>[x] PyTensor frontend (<code class="docutils literal notranslate"><span class="pre">sparsax.pytensor</span></code>, optional extra) with matching autodiff,
+for PyMC’s default backend / NUTS — a second frontend over the same CHOLMOD core</p></li>
+<li><p>[ ] float32 (CHOLMOD 5 single precision) and int64 indices</p></li>
+<li><p>[ ] Autodiff rule for <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> (currently forward-only)</p></li>
+<li><p>[ ] Wheels / conda-forge packaging</p></li>
+</ul>
+<div class="toctree-wrapper compound">
+</div>
+<div class="toctree-wrapper compound">
+</div>
+<div class="toctree-wrapper compound">
+</div>
+
+
+
+
+
+
+
+  
+  
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  
+  
+  <div class="md-footer-meta md-typeset">
+    
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-footer-copyright__highlight">
+        &#169; Copyright 2024-, sparsax developers.
+        
+    </div>
+  
+    Created using
+    <a href="https://www.sphinx-doc.org/" target="_blank" rel="noopener">Sphinx</a>
+    9.1.0.
+     and
+    <a href="https://github.com/jbms/sphinx-immaterial/" target="_blank" rel="noopener">Sphinx-Immaterial</a>
+  
+</div>
+      
+    </div>
+    
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": ".", "features": ["navigation.sections", "navigation.top", "search.share", "search.suggest", "toc.follow", "toc.sticky", "content.code.copy", "content.action.edit"], "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike", "staticVersions": null, "versionPath": "https://knaaptime.github.io/sparsax/versions.json"}}</script>
+    
+      
+        <script src="_static/sphinx_immaterial_theme.32136f45f91ae6956.min.js?v=a7a9472a"></script>
+        <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+        <script src="_static/copybutton.js?v=f281be69"></script>
+    
+  </body>
+</html>
