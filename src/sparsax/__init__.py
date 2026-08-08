@@ -15,6 +15,14 @@ the extension, keyed on the sparsity pattern. Repeated solves with the same
 pattern — the typical Gibbs-sampler loop — only pay for the numeric
 refactorization, and solves with unchanged values skip even that.
 
+For the "hold a numeric factor open" case — e.g. a shift-invert Krylov basis
+that reuses one factorization across an unbounded sequence of solves whose RHS
+depends on the previous solve's output — use :func:`factor` /
+:func:`solve_factor` / :func:`logdet_factor`. These token-based primitives
+guarantee reuse inside ``lax.fori_loop`` without relying on a host-side cache
+surviving JIT-compiled iterations, and express recurrences that
+:func:`factor_solve` (which fuses a *fixed* set of solves into one call) cannot.
+
 Example::
 
     import jax, jax.numpy as jnp
@@ -23,7 +31,7 @@ Example::
     jax.config.update("jax_enable_x64", True)
 
     @jax.jit
-    def step(Ax, b):
+    def step(Ai, Aj, Ax, b):
         return sparsax.solve(Ai, Aj, Ax, b)   # full CHOLMOD speed in JIT
 
 ``solve`` is differentiable in ``Ax`` and ``b``, and ``logdet`` is
@@ -41,17 +49,26 @@ import numpy as np
 
 import sparsax_cpp as _cpp
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 __all__ = [
     "solve",
     "logdet",
     "selinv",
     "factor_solve",
+    "factor",
+    "solve_factor",
+    "logdet_factor",
     "sample_gaussian",
     "update_solve",
     "lu_solve",
     "lu_solve_bcoo",
+    "lu_logdet",
+    "lu_logdet_bcoo",
+    "lu_factor",
+    "lu_solve_factor",
+    "lu_logdet_factor",
     "set_lu_cache_size",
+    "set_num_cache_size",
     "solve_bcoo",
     "logdet_bcoo",
     "update_solve_bcoo",
@@ -100,11 +117,61 @@ jax.ffi.register_ffi_target(
     platform="cpu",
 )
 jax.ffi.register_ffi_target(
+    "sparsax_factor_f64", _cpp.factor_f64_capsule(), platform="cpu"
+)
+jax.ffi.register_ffi_target(
+    "sparsax_solve_factor_f64", _cpp.solve_factor_f64_capsule(), platform="cpu"
+)
+jax.ffi.register_ffi_target(
+    "sparsax_solve_factor_batched_f64",
+    _cpp.solve_factor_batched_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_logdet_factor_f64", _cpp.logdet_factor_f64_capsule(), platform="cpu"
+)
+jax.ffi.register_ffi_target(
+    "sparsax_logdet_factor_batched_f64",
+    _cpp.logdet_factor_batched_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
     "sparsax_lu_solve_f64", _cpp.lu_solve_f64_capsule(), platform="cpu"
 )
 jax.ffi.register_ffi_target(
     "sparsax_lu_solve_batched_f64",
     _cpp.lu_solve_batched_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_lu_factor_f64", _cpp.lu_factor_f64_capsule(), platform="cpu"
+)
+jax.ffi.register_ffi_target(
+    "sparsax_lu_solve_factor_f64",
+    _cpp.lu_solve_factor_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_lu_solve_factor_batched_f64",
+    _cpp.lu_solve_factor_batched_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_lu_logdet_f64", _cpp.lu_logdet_f64_capsule(), platform="cpu"
+)
+jax.ffi.register_ffi_target(
+    "sparsax_lu_logdet_batched_f64",
+    _cpp.lu_logdet_batched_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_lu_logdet_factor_f64",
+    _cpp.lu_logdet_factor_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_lu_logdet_factor_batched_f64",
+    _cpp.lu_logdet_factor_batched_f64_capsule(),
     platform="cpu",
 )
 
@@ -358,6 +425,230 @@ def lu_solve_bcoo(A, b):
     return lu_solve(Ai, Aj, Ax, b)
 
 
+# --- KLU logdet + factor tokens (non-symmetric analogue) --------------------
+#
+# lu_logdet computes log|det(A)| from the KLU factor's U diagonal — an O(n) C
+# side sum, far cheaper than anything Python-side, and genuinely needed for
+# non-symmetric spatial models where log|I - rho W| appears in the log-likelihood
+# Jacobian and W is row-standardised (cannot go through CHOLMOD).
+#
+# lu_factor / lu_solve_factor / lu_logdet_factor are the non-symmetric analogue
+# of the CHOLMOD factor / solve_factor / logdet_factor token primitives: hold a
+# KLU numeric factor open across an unbounded sequence of solves + a logdet
+# without re-hashing Ax or refactoring. The token holds a strong shared_ptr to
+# the numeric factor, so the per-pattern LRU cannot evict it while the token is
+# live. This expresses the recurrence V_{j+1} = A^{-1}(G V_j) that lu_solve
+# cannot (the next solve's RHS depends on the previous solve's output).
+
+
+def _lu_logdet_ffi(Ai, Aj, Ax, n):
+    call = jax.ffi.ffi_call(
+        "sparsax_lu_logdet_f64",
+        jax.ShapeDtypeStruct((), jnp.float64),
+        vmap_method="sequential",
+    )
+    return call(Ai, Aj, Ax, n=np.int64(n))
+
+
+def lu_logdet(Ai, Aj, Ax, n):
+    """Log-determinant of a general (non-symmetric) sparse matrix via KLU.
+
+    The non-symmetric counterpart of :func:`logdet`: computes
+    ``log|det(A)|`` from the KLU factor's ``U`` diagonal (plus the row-scale
+    correction), an ``O(n)`` C-side sum. Use it when ``A`` is not symmetric
+    positive definite — e.g. ``A = I - rho W`` for a row-standardised spatial
+    weights matrix ``W``. Works inside ``@jax.jit`` / ``lax.scan``; shares the
+    per-pattern LRU factor cache with :func:`lu_solve`, so a ``lu_solve`` and a
+    ``lu_logdet`` with identical values factorize only once.
+
+    Not differentiable (the non-symmetric logdet gradient is the full selected
+    inverse, which KLU does not expose). Use :func:`logdet` for symmetric ``A``
+    when a gradient is needed.
+
+    Args:
+        Ai, Aj: ``[n_nz]`` int32 — COO row/column indices (full matrix, no
+            upper-triangle folding, unlike :func:`logdet`).
+        Ax: ``[n_nz]`` float64 — COO values. Duplicates are summed.
+        n: matrix dimension (static Python int).
+
+    Returns:
+        Scalar float64 ``log(abs(det(A)))``.
+
+    Raises:
+        Exception: if ``A`` is singular (a zero or NaN ``U`` diagonal entry).
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError(
+            f"Ai, Aj, Ax must be 1D with equal lengths, got "
+            f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
+        )
+    return _lu_logdet_ffi(Ai, Aj, Ax, int(n))
+
+
+def lu_logdet_bcoo(A):
+    """:func:`lu_logdet` for a JAX ``BCOO`` matrix ``A``."""
+    Ai, Aj, Ax = _bcoo_parts(A)
+    return lu_logdet(Ai, Aj, Ax, A.shape[0])
+
+
+def _lu_factor_ffi(Ai, Aj, Ax, n):
+    call = jax.ffi.ffi_call(
+        "sparsax_lu_factor_f64",
+        jax.ShapeDtypeStruct((2,), jnp.int64),
+        # The C++ handler factors one Ax per call; vmap(lu_factor) maps to one
+        # FFI call per batch element, each producing its own token.
+        vmap_method="sequential",
+    )
+    return call(Ai, Aj, Ax, n=np.int64(n))
+
+
+def lu_factor(Ai, Aj, Ax, n):
+    """Factor general (non-symmetric) ``A`` once via KLU, return a token.
+
+    The non-symmetric counterpart of :func:`factor`. The token is an opaque
+    ``int64[2]`` array carrying a strong reference to a KLU numeric factor held
+    in the extension's token table. Pass it to :func:`lu_solve_factor` and
+    :func:`lu_logdet_factor` to issue an unbounded sequence of solves and a
+    logdet against the same factor — no refactoring and no per-call re-hash of
+    ``Ax``. The per-pattern LRU cannot evict the factor while the token is live.
+
+    This is the recurrence primitive that :func:`lu_solve` cannot express:
+    ``V_{j+1} = A^{-1}(G V_j)`` (a shift-invert Krylov basis for a
+    non-symmetric ``A``) needs the previous solve's output as the next solve's
+    input, which a single fused call cannot represent.
+
+    Forward-only (no autodiff). Use :func:`lu_solve` when gradients are needed.
+
+    Args:
+        Ai, Aj: ``[n_nz]`` int32 — COO row/column indices (full matrix).
+        Ax: ``[n_nz]`` float64 — COO values.
+        n: matrix dimension (static Python int).
+
+    Returns:
+        ``Factor`` — an opaque ``int64[2]`` token. Not meant to be inspected;
+        pass to :func:`lu_solve_factor` / :func:`lu_logdet_factor`.
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError(
+            f"Ai, Aj, Ax must be 1D with equal lengths, got "
+            f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
+        )
+    return _lu_factor_ffi(Ai, Aj, Ax, int(n))
+
+
+# One custom_vmap-wrapped dispatcher per trans flag, mirroring solve_factor's
+# dispatcher: vmap over b (one token, many RHS) reuses the token; the batch loop
+# runs in C++.
+_LU_SF_DISPATCH = {}
+
+
+def _make_lu_solve_factor_dispatch(trans):
+    @jax.custom_batching.custom_vmap
+    def dispatch(token, b):
+        call = jax.ffi.ffi_call(
+            "sparsax_lu_solve_factor_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
+        )
+        return call(token, b, trans=np.int64(trans))
+
+    @dispatch.def_vmap
+    def _dispatch_vmap(axis_size, in_batched, token, b):
+        token_batched, b_batched = in_batched
+        if b.ndim not in (2, 3):
+            raise ValueError(f"vmapped b must be 2D or 3D, got shape {b.shape}")
+        if not token_batched:
+            token = jnp.broadcast_to(token, (axis_size,) + token.shape)
+        if not b_batched:
+            b = jnp.broadcast_to(b, (axis_size,) + b.shape)
+        call = jax.ffi.ffi_call(
+            "sparsax_lu_solve_factor_batched_f64",
+            jax.ShapeDtypeStruct(b.shape, b.dtype),
+        )
+        return call(token, b, trans=np.int64(trans)), True
+
+    return dispatch
+
+
+def lu_solve_factor(token, b, trans=False):
+    """Solve ``A x = b`` (or ``A^T x = b``) using a pre-computed KLU factor.
+
+    Reuses the numeric factor held in ``token`` (from :func:`lu_factor``); costs
+    ``O(nnz(L+U) * n_rhs)`` triangular solves, no factorization. The factor is
+    not consumed — call :func:`lu_solve_factor` as many times as needed against
+    the same token. Forward-only (no autodiff). Use :func:`lu_solve` when
+    gradients are needed.
+
+    Args:
+        token: ``Factor`` from :func:`lu_factor` (an opaque ``int64[2]`` array).
+        b: ``[n]`` or ``[n, n_rhs]`` float64 — right-hand side(s).
+        trans: if ``True``, solve ``A^T x = b`` (the adjoint, used by
+            :func:`lu_solve`'s VJP); otherwise ``A x = b``.
+
+    Returns:
+        ``x`` with the same shape as ``b``.
+
+    Note:
+        Under ``jax.vmap``, ``vmap(lu_solve_factor, in_axes=(None, 0))`` reuses
+        one factor across a batch of RHS — the key Krylov-recurrence shape (one
+        factor, ``m+1`` solves). ``vmap(lu_factor)`` followed by
+        ``vmap(lu_solve_factor)`` (both batched) produces one factor per batch
+        element.
+    """
+    _require_x64()
+    token = jnp.asarray(token, jnp.int64)
+    b = jnp.asarray(b, jnp.float64)
+    if token.shape != (2,):
+        raise ValueError(f"token must be int64[2], got shape {token.shape}")
+    if b.ndim not in (1, 2):
+        raise ValueError(f"b must be 1D or 2D, got shape {b.shape}")
+    key = 1 if trans else 0
+    dispatch = _LU_SF_DISPATCH.get(key)
+    if dispatch is None:
+        dispatch = _LU_SF_DISPATCH[key] = _make_lu_solve_factor_dispatch(key)
+    return dispatch(token, b)
+
+
+def _lu_logdet_factor_ffi(token):
+    call = jax.ffi.ffi_call(
+        "sparsax_lu_logdet_factor_f64",
+        jax.ShapeDtypeStruct((), jnp.float64),
+        vmap_method="sequential",
+    )
+    return call(token)
+
+
+def lu_logdet_factor(token):
+    """Return ``log|det(A)|`` from a pre-computed KLU factor (no refactor).
+
+    Reads the ``U`` diagonal from the factor held in ``token`` (from
+    :func:`lu_factor``); ``O(n)`` cost. Forward-only (no autodiff).
+
+    Args:
+        token: ``Factor`` from :func:`lu_factor`.
+
+    Returns:
+        Scalar float64 ``log(abs(det(A)))``.
+
+    Note:
+        The logdet is computed from the held factor's ``U`` diagonal at call
+        time (no caching on the token, since KLU factors are shared objects).
+        Under ``vmap`` over a batch of tokens it routes to the batched handler
+        (one logdet per chain).
+    """
+    _require_x64()
+    token = jnp.asarray(token, jnp.int64)
+    if token.shape != (2,):
+        raise ValueError(f"token must be int64[2], got shape {token.shape}")
+    return _lu_logdet_factor_ffi(token)
+
+
 def set_lu_cache_size(n):
     """Set how many KLU numeric factors are retained per sparsity pattern.
 
@@ -367,6 +658,22 @@ def set_lu_cache_size(n):
     least as many factors as the vmap batch size (number of chains). Default 32.
     """
     _cpp.set_lu_cache_size(int(n))
+
+
+def set_num_cache_size(n):
+    """Cap the value-keyed numeric-factor cache per CHOLMOD pattern.
+
+    The :func:`factor` / :func:`solve_factor` / :func:`logdet_factor` token
+    primitives hold numeric factor copies in a per-pattern, value-keyed cache so
+    repeated ``factor`` calls with identical ``Ax`` skip the refactor. When the
+    cache would exceed ``n`` slots, the oldest slot is evicted and any
+    outstanding token referencing it becomes stale (its next
+    :func:`solve_factor` / :func:`logdet_factor` call raises). The token-based
+    API is the recommended path when guaranteed reuse is needed — hold the
+    token — so this cap mostly bounds memory when many distinct ``Ax`` values
+    are factored against the same pattern without holding tokens.
+    """
+    _cpp.set_num_cache_size(int(n))
 
 
 def _logdet_ffi(Ai, Aj, Ax, n):
@@ -619,6 +926,193 @@ def sample_gaussian(Ai, Aj, Ax, b, z, want_logdet=False):
         return mean + w, mean, ld
     mean, w = xs
     return mean + w, mean
+
+
+# --- factor / solve_factor / logdet_factor: hold a numeric factor open ------
+#
+# These three primitives give an explicit, guaranteed way to hold a CHOLMOD
+# numeric factor open and issue an unbounded sequence of solves + a logdet
+# against it, without re-hashing Ax or refactoring on each call. ``factor_solve``
+# fuses a fixed set of solves into one call; the token-based API expresses the
+# *recurrence* case (V_{j+1} = A^{-1}(G V_j), a shift-invert Krylov basis) where
+# the next solve's RHS depends on the previous solve's output.
+#
+# The token is an opaque ``int64[2]`` array carried as XLA state. Under
+# ``jax.vmap`` it composes naturally: ``vmap(factor)`` factors each batch
+# element once, and ``vmap(solve_factor, in_axes=(None, 0))`` reuses one factor
+# across a batch of RHS — the key Krylov-recurrence shape (one factor, m+1
+# solves). The token is forward-only (no autodiff); use :func:`solve` /
+# :func:`logdet` when gradients are needed.
+
+
+def _factor_ffi(Ai, Aj, Ax, n):
+    call = jax.ffi.ffi_call(
+        "sparsax_factor_f64",
+        jax.ShapeDtypeStruct((2,), jnp.int64),
+        # The C++ handler factors one Ax per call; vmap(factor) maps to one
+        # FFI call per batch element, each producing its own token. This is the
+        # intended batch semantics (one factor per chain), and matches
+        # factor_solve's per-element factorization.
+        vmap_method="sequential",
+    )
+    return call(Ai, Aj, Ax, n=np.int64(n))
+
+
+def factor(Ai, Aj, Ax, n):
+    """Factor SPD ``A`` once, returning a reusable factor token.
+
+    The token is an opaque ``int64[2]`` array carrying a reference to a
+    CHOLMOD numeric factor held in the extension's cache. Pass it to
+    :func:`solve_factor` and :func:`logdet_factor` to issue an unbounded
+    sequence of solves and a logdet against the same factor — no refactoring
+    and no per-call re-hash of ``Ax``.
+
+    This is the "hold the factor open" primitive that :func:`factor_solve`
+    cannot express: a recurrence ``V_{j+1} = A^{-1}(G V_j)`` (a shift-invert
+    Krylov basis) needs the previous solve's output as the next solve's input,
+    which a single fused call cannot represent. With a token, the basis build
+    is a ``lax.fori_loop`` of :func:`solve_factor` calls against one ``factor``.
+
+    The token is forward-only (no autodiff). Use :func:`solve` / :func:`logdet`
+    when gradients are needed.
+
+    Args:
+        Ai, Aj: ``[n_nz]`` int32 — COO pattern (upper triangle, ``Ai <= Aj``).
+        Ax: ``[n_nz]`` float64 — COO values.
+        n: matrix dimension (static Python int).
+
+    Returns:
+        ``Factor`` — an opaque ``int64[2]`` token. Not meant to be inspected;
+        pass to :func:`solve_factor` / :func:`logdet_factor`.
+
+    Note:
+        Repeated ``factor`` calls with identical ``Ax`` reuse a cached numeric
+        factor (no refactoring). The cache is per sparsity pattern; call
+        :func:`clear_cache` to drop all factors and invalidate outstanding
+        tokens.
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError(
+            f"Ai, Aj, Ax must be 1D with equal lengths, got "
+            f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
+        )
+    return _factor_ffi(Ai, Aj, Ax, int(n))
+
+
+def _solve_factor_ffi(token, b, mode):
+    call = jax.ffi.ffi_call(
+        "sparsax_solve_factor_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
+    )
+    return call(token, b, mode=np.int64(mode))
+
+
+# One custom_vmap-wrapped dispatcher per solve mode: unbatched normally, but
+# under vmap it routes to the batched handler so the batch loop runs in C++.
+# This mirrors the solve() dispatcher and lets vmap over b (one factor, many
+# RHS) reuse the token without per-iteration Python dispatch.
+_SF_DISPATCH = {}
+
+
+def _make_solve_factor_dispatch(mode):
+    @jax.custom_batching.custom_vmap
+    def dispatch(token, b):
+        call = jax.ffi.ffi_call(
+            "sparsax_solve_factor_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
+        )
+        return call(token, b, mode=np.int64(mode))
+
+    @dispatch.def_vmap
+    def _dispatch_vmap(axis_size, in_batched, token, b):
+        token_batched, b_batched = in_batched
+        if b.ndim not in (2, 3):
+            raise ValueError(f"vmapped b must be 2D or 3D, got shape {b.shape}")
+        if not token_batched:
+            token = jnp.broadcast_to(token, (axis_size,) + token.shape)
+        if not b_batched:
+            b = jnp.broadcast_to(b, (axis_size,) + b.shape)
+        call = jax.ffi.ffi_call(
+            "sparsax_solve_factor_batched_f64",
+            jax.ShapeDtypeStruct(b.shape, b.dtype),
+        )
+        return call(token, b, mode=np.int64(mode)), True
+
+    return dispatch
+
+
+def solve_factor(token, b, mode=MODE_A):
+    """Solve ``A x = b`` using a pre-computed factor (no refactor).
+
+    Reuses the numeric factor held in ``token`` (from :func:`factor`); costs
+    ``O(nnz(L) * n_rhs)`` triangular solves, no factorization. The factor is not
+    consumed — call :func:`solve_factor` as many times as needed against the
+    same token.
+
+    Forward-only (no autodiff). Use :func:`solve` when gradients are needed.
+
+    Args:
+        token: ``Factor`` from :func:`factor` (an opaque ``int64[2]`` array).
+        b: ``[n]`` or ``[n, n_rhs]`` float64 — right-hand side(s).
+        mode: which factor-part system to solve (``MODE_A`` by default), one of
+            the ``MODE_*`` constants, matching :func:`solve`.
+
+    Returns:
+        ``x`` with the same shape as ``b``.
+
+    Note:
+        Under ``jax.vmap``, ``vmap(solve_factor, in_axes=(None, 0))`` reuses one
+        factor across a batch of RHS — the key Krylov-recurrence shape (one
+        factor, ``m+1`` solves). ``vmap(factor)`` followed by
+        ``vmap(solve_factor)`` (both batched) produces one factor per batch
+        element, matching :func:`factor_solve`'s batch semantics.
+    """
+    _require_x64()
+    token = jnp.asarray(token, jnp.int64)
+    b = jnp.asarray(b, jnp.float64)
+    if token.shape != (2,):
+        raise ValueError(f"token must be int64[2], got shape {token.shape}")
+    if b.ndim not in (1, 2):
+        raise ValueError(f"b must be 1D or 2D, got shape {b.shape}")
+    dispatch = _SF_DISPATCH.get(mode)
+    if dispatch is None:
+        dispatch = _SF_DISPATCH[mode] = _make_solve_factor_dispatch(mode)
+    return dispatch(token, b)
+
+
+def _logdet_factor_ffi(token):
+    call = jax.ffi.ffi_call(
+        "sparsax_logdet_factor_f64",
+        jax.ShapeDtypeStruct((), jnp.float64),
+        vmap_method="sequential",
+    )
+    return call(token)
+
+
+def logdet_factor(token):
+    """Return ``log|A|`` from a pre-computed factor (no refactor).
+
+    Reads the Cholesky diagonal from the factor held in ``token`` (from
+    :func:`factor`); ``O(n)`` cost. Forward-only (no autodiff).
+
+    Args:
+        token: ``Factor`` from :func:`factor`.
+
+    Returns:
+        Scalar float64 ``log(det(A))``.
+
+    Note:
+        The logdet is computed at :func:`factor` time and cached on the token,
+        so this call is essentially free. Under ``vmap`` over a batch of tokens
+        it routes to the batched handler (one logdet per chain).
+    """
+    _require_x64()
+    token = jnp.asarray(token, jnp.int64)
+    if token.shape != (2,):
+        raise ValueError(f"token must be int64[2], got shape {token.shape}")
+    return _logdet_factor_ffi(token)
 
 
 def update_solve(Ai, Aj, Ax, C, b, downdate=False, mode=MODE_A, return_logdet=False):

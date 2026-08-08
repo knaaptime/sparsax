@@ -1,33 +1,53 @@
 [![Continuous Integration](https://github.com/knaaptime/sparsax/actions/workflows/unittests.yml/badge.svg)](https://github.com/knaaptime/sparsax/actions/workflows/unittests.yml)
-[![codecov](https://codecov.io/gh/knaaptime/sparsax/branch/main/graph/badge.svg)](https://codecov.io/gh/knaaptime/sparsax)
+[![codecov](https://codecov.io/gh/knaaptime/sparsax/branch/main/graph/badge.svg)](https://codecov.io/gh/knaaptime/sparsax/branch/main/graph/badge.svg)
 
 
 # sparsax
 
-JAX & PyTensor -native sparse Cholesky via [CHOLMOD](https://github.com/DrTimothyAldenDavis/SuiteSparse).
-Solves with symmetric positive definite sparse matrices run at full native speed
+JAX & PyTensor-native sparse direct solvers backed by [SuiteSparse](https://github.com/DrTimothyAldenDavis/SuiteSparse).
+`solve`, `logdet`, and friends are [XLA FFI](https://docs.jax.dev/en/latest/ffi.html) custom
+calls into **CHOLMOD** (Cholesky, for symmetric positive definite matrices) and **KLU** (LU,
+for general non-symmetric matrices), so sparse factorizations run at full native speed
 **inside `@jax.jit`** (and `lax.scan` / `lax.fori_loop`) — no Python callback overhead.
 
 ## Why?
 
-- No open-source JIT framework (JAX, PyTorch, TensorFlow) exposes sparse Cholesky as a
-  compilable primitive; [`klujax`](https://github.com/florislaporte/klujax) covers sparse LU,
-  which is ~2× slower than Cholesky for SPD systems.
-- The target workload is Gibbs samplers (e.g. Bayesian spatial econometrics), where an SPD
-  precision matrix is solved thousands of times with the same sparsity pattern but changing
-  values, inside a JIT-compiled loop.
-- Benchmarks (M-series macOS, 2D grid Laplacian, values changing every iteration): matches a
-  hand-written scikit-sparse Python loop per iteration and is ~2.7× faster than
-  `scipy.sparse.linalg.splu`, while running entirely inside `jax.jit`.
+No open-source JIT framework (JAX, PyTorch, TensorFlow) exposes a sparse direct factorization
+as a compilable primitive. For iterative workloads that factorize the same sparsity pattern
+many times with changing values — Gibbs samplers, MCMC for Bayesian spatial econometrics,
+shift-invert Krylov methods — paying the Python/SuiteSparse boundary on every iteration
+dominates the runtime. `sparsax` moves the whole loop to C++ behind a JIT-compiled JAX
+function, with the symbolic analysis (fill-reducing ordering + elimination tree) cached and
+reused across calls, and the numeric factorization skipped entirely when the values haven't
+changed.
 
-## How it works
+Benchmarks (M-series macOS, 2D grid Laplacian, values changing every iteration): CHOLMOD via
+`sparsax` matches a hand-written scikit-sparse Python loop per iteration and is ~2.7× faster
+than `scipy.sparse.linalg.splu`, while running entirely inside `jax.jit`.
 
-`solve` and `logdet` are [XLA FFI](https://docs.jax.dev/en/latest/ffi.html) custom calls into
-CHOLMOD. The extension caches symbolic analyses (fill-reducing ordering + elimination tree)
-keyed on the sparsity pattern, so repeated calls with the same pattern only pay for the numeric
-refactorization — and calls with unchanged values skip even that, sharing one factorization
-between `solve` and `logdet`. There are no handles to manage and nothing to pass through JIT
-boundaries; the caching is transparent.
+## Features
+
+- **CHOLMOD** — `solve`, `logdet`, `selinv` (selected inverse), `factor_solve`,
+  `sample_gaussian`, `update_solve` (rank-k update/downdate) for symmetric positive definite
+  `A`.
+- **KLU** — `lu_solve`, `lu_logdet`, `lu_factor` / `lu_solve_factor` for general
+  non-symmetric `A` (e.g. `A = I − ρW` with a row-standardised spatial weights matrix).
+- **JIT / `lax.scan`**: the symbolic analysis is computed once and reused across iterations.
+- **`vmap`**: `jax.vmap(solve)` lowers to a *single* native FFI call that loops over the
+  batch in C++ (reusing the cached analysis), rather than XLA per-iteration dispatch.
+  Composes with `grad` (`vmap(grad(solve))` batches too).
+- **Autodiff**: `solve` has a custom reverse-mode VJP in both `Ax` and `b`; `logdet` has one
+  in `Ax` via the selected inverse. `lu_solve` is differentiable in `Ax` and `b` (transpose
+  solve); `lu_logdet` is forward-only. Together `solve`/`logdet` give the gradient of a
+  Gaussian log-density, so a precision matrix's values can be fit by HMC/NUTS, VI, or
+  empirical-Bayes optimization.
+- **Factor-once primitives** — `factor_solve` / `sample_gaussian` (CHOLMOD) and
+  `lu_factor` / `lu_solve_factor` (KLU) factorize once and serve an unbounded sequence of
+  solves against the same factor, inside `lax.fori_loop` and under `vmap`.
+- **Multiple right-hand sides**: `b` may be `(n,)` or `(n, n_rhs)`.
+- **PyMC / PyTensor** frontend (optional extra) for the same CHOLMOD core, so PyMC's default
+  NUTS sampler can differentiate through the sparse solve and log-determinant without going
+  through JAX/XLA.
 
 ## Installation
 
@@ -37,7 +57,15 @@ conda activate sparsax
 pip install --no-build-isolation .
 ```
 
-## Quick start
+For the PyTensor / PyMC frontend:
+
+```bash
+pip install "sparsax[pytensor]"
+```
+
+> `jax.config.update("jax_enable_x64", True)` is required — CHOLMOD and KLU are float64.
+
+## Quick start: CHOLMOD (symmetric positive definite `A`)
 
 ```python
 import jax
@@ -52,33 +80,65 @@ jax.config.update("jax_enable_x64", True)   # required: CHOLMOD is float64
 Ai = np.array([0, 0, 1, 1, 1, 2, 2], dtype=np.int32)
 Aj = np.array([0, 1, 0, 1, 2, 1, 2], dtype=np.int32)
 Ax = jnp.array([4.0, 1.0, 1.0, 5.0, 2.0, 2.0, 6.0])
-b = jnp.array([1.0, 2.0, 3.0])
+b  = jnp.array([1.0, 2.0, 3.0])
 
-x = sparsax.solve(Ai, Aj, Ax, b)          # eager
-ld = sparsax.logdet(Ai, Aj, Ax, n=3)      # log|A| from the same factorization
+x  = sparsax.solve(Ai, Aj, Ax, b)          # eager
+ld = sparsax.logdet(Ai, Aj, Ax, n=3)       # log|A| from the same factorization
+z  = sparsax.selinv(Ai, Aj, Ax, n=3)       # (A^-1) on A's sparsity pattern
 
-@jax.jit                                      # ...or fully JIT-compiled
+@jax.jit
 def gibbs_step(Ax, b):
-    x = sparsax.solve(Ai, Aj, Ax, b)      # full CHOLMOD speed, no callbacks
-    ld = sparsax.logdet(Ai, Aj, Ax, n=3)  # factorization shared with solve
+    x  = sparsax.solve(Ai, Aj, Ax, b)      # full CHOLMOD speed, no callbacks
+    ld = sparsax.logdet(Ai, Aj, Ax, n=3)   # factorization shared with solve
     return x, ld
 ```
 
-Features:
+## Quick start: KLU (general non-symmetric `A`)
 
-- **`jit` / `lax.scan`**: the symbolic analysis is computed once and reused across iterations.
-- **Autodiff**: `solve` has a custom VJP (reverse-mode) in both `Ax` and `b`;
-  `logdet` has one in `Ax` (via the selected inverse — see below). Together they
-  give the gradient of a Gaussian log-density, so the precision matrix's values
-  can be fit by gradient-based inference (HMC/NUTS, empirical Bayes).
-- **`vmap`**: `jax.vmap(solve)` lowers to a *single* native FFI call that loops over the batch
-  in C++ (reusing the cached analysis), rather than XLA per-iteration dispatch. Composes with
-  `grad` (`vmap(grad(solve))` batches too). Map over `Ax`, `b`, or both.
-- **Multiple right-hand sides**: `b` may be `(n,)` or `(n, n_rhs)`.
-- **Factor-part solves**: `mode=sparsax.MODE_LT` etc. expose CHOLMOD's solve systems
-  (`P' L L' P = A`). Sampling `y ~ N(0, A^{-1})`:
-  `y = solve(..., solve(..., z, mode=MODE_LT), mode=MODE_PT)`.
-- **Not positive definite** → runtime exception (the factor is always a true LL').
+```python
+import jax
+import jax.numpy as jnp
+import numpy as np
+import sparsax
+
+jax.config.update("jax_enable_x64", True)
+
+# General (non-symmetric) matrix in COO form. The full matrix is used —
+# no upper-triangle folding. A common case is A = I - rho * W.
+n = 3
+Ai = np.array([0, 0, 1, 1, 2, 2], dtype=np.int32)
+Aj = np.array([0, 1, 0, 1, 1, 2], dtype=np.int32)
+Ax = jnp.array([1.0, -0.2, -0.3, 1.0, -0.1, 1.0])   # I - rho W, say
+b  = jnp.array([1.0, 2.0, 3.0])
+
+x  = sparsax.lu_solve(Ai, Aj, Ax, b)        # eager
+ld = sparsax.lu_logdet(Ai, Aj, Ax, n=n)     # log|det(A)| from the KLU factor
+
+@jax.jit
+def step(Ax, b):
+    return sparsax.lu_solve(Ai, Aj, Ax, b)  # full KLU speed in JIT
+```
+
+KLU shares the same caching story as CHOLMOD: the sparsity pattern's fill-reducing analysis is
+computed once and cached, and under `jax.vmap` the whole batch is solved in a single native FFI
+call. `lu_solve` is differentiable in `Ax` and `b` (transpose solve); `lu_logdet` is forward-only
+(the non-symmetric logdet gradient is the full selected inverse, which KLU does not expose —
+use `logdet` for symmetric `A` when a gradient is needed).
+
+## How it works
+
+`solve` and `logdet` (and their `lu_*` counterparts) are XLA FFI custom calls into CHOLMOD and
+KLU. The extension caches symbolic analyses keyed on the sparsity pattern, so repeated calls
+with the same pattern only pay for the numeric refactorization — and calls with unchanged
+values skip even that, sharing one factorization between `solve` and `logdet`. There are no
+handles to manage and nothing to pass through JIT boundaries; the caching is transparent.
+
+For the "hold a numeric factor open" case — e.g. a shift-invert Krylov basis that reuses one
+factorization across an unbounded sequence of solves whose RHS depends on the previous solve's
+output — `factor` / `solve_factor` / `logdet_factor` (CHOLMOD) and `lu_factor` /
+`lu_solve_factor` / `lu_logdet_factor` (KLU) return an opaque token carrying a strong reference
+to the numeric factor, guaranteeing reuse inside `lax.fori_loop` without relying on a host-side
+cache surviving JIT-compiled iterations.
 
 ## Factor once, do everything: `factor_solve` / `sample_gaussian`
 
@@ -97,8 +157,8 @@ eta, mean, ld = sparsax.sample_gaussian(Ai, Aj, Ax, b, z, want_logdet=True)
 # ...or spell it out with the general primitive:
 (mean, w), ld = sparsax.factor_solve(
     Ai, Aj, Ax,
-    [(b, sparsax.MODE_A),                          # A^-1 b
-     (z, (sparsax.MODE_LT, sparsax.MODE_PT))],  # P' L^-T z  (chain)
+    [(b, sparsax.MODE_A),                             # A^-1 b
+     (z, (sparsax.MODE_LT, sparsax.MODE_PT))],        # P' L^-T z  (chain)
     want_logdet=True)
 eta = mean + w
 ```
@@ -110,45 +170,44 @@ batch of *different* A's: **4× fewer factorizations and ~3.3–3.6× faster** t
 separate `solve`/`logdet` primitives. `factor_solve` is forward-only (no autodiff rule); use
 `solve`/`logdet` when you need gradients.
 
+The KLU analogue is `lu_factor` + `lu_solve_factor` (+ `lu_logdet_factor`): factorize once,
+then issue an unbounded sequence of solves (and a logdet) against the same LU factor inside a
+JIT-compiled loop, without re-hashing `Ax` or risking LRU eviction mid-sweep.
+
 ## Gradients & the selected inverse
 
-`solve` and `logdet` are the two halves of a Gaussian log-density's gradient, so
-a precision matrix `A(θ)` with a fixed pattern and θ-dependent values can be fit
-by gradient-based inference — HMC/NUTS (e.g. via numpyro/blackjax, or PyMC's JAX
-sampling backend), VI, or empirical-Bayes/MAP optimization:
+`solve` and `logdet` are the two halves of a Gaussian log-density's gradient, so a precision
+matrix `A(θ)` with a fixed pattern and θ-dependent values can be fit by gradient-based
+inference — HMC/NUTS (via numpyro/blackjax, or PyMC's JAX sampling backend), VI, or
+empirical-Bayes/MAP optimization:
 
 ```python
 def neg_log_post(Ax):                                  # up to constants
-    quad = b @ sparsax.solve(Ai, Aj, Ax, b)         # b' A^-1 b   (solve VJP)
+    quad = b @ sparsax.solve(Ai, Aj, Ax, b)            # b' A^-1 b   (solve VJP)
     return 0.5 * quad - 0.5 * sparsax.logdet(Ai, Aj, Ax, n)   # log|A| (logdet VJP)
 
 grad_Ax = jax.grad(neg_log_post)(Ax)                   # works under jit / vmap
 ```
 
-`logdet`'s reverse-mode rule uses that `d log|A| / dA = A^{-1}`, evaluated **only
-at `A`'s sparsity pattern** by Takahashi's selected-inversion
-recurrence over the Cholesky factor —
+`logdet`'s reverse-mode rule uses that `d log|A| / dA = A^{-1}`, evaluated **only at `A`'s
+sparsity pattern** by Takahashi's selected-inversion recurrence over the Cholesky factor —
 never the dense inverse. That quantity is exposed directly:
 
 ```python
-z = sparsax.selinv(Ai, Aj, Ax, n)   # z[k] == (A^-1)[Ai[k], Aj[k]]
+z   = sparsax.selinv(Ai, Aj, Ax, n)   # z[k] == (A^-1)[Ai[k], Aj[k]]
 var = z[Ai == Aj]                      # diag(A^-1): Gaussian marginal variances
 ```
 
-`selinv` shares the factorization cache, is JIT-compilable and `vmap`-able, and
-costs one selected-inversion pass over the factor (`O(nnz(L))`-ish), not `n`
-solves. `factor_solve` / `sample_gaussian` remain forward-only.
+`selinv` shares the factorization cache, is JIT-compilable and `vmap`-able, and costs one
+selected-inversion pass over the factor (`O(nnz(L))`-ish), not `n` solves. `factor_solve` /
+`sample_gaussian` remain forward-only. `lu_solve` carries the analogous reverse-mode rule (a
+transpose solve for the VJP); `lu_logdet` is not differentiable.
 
 ## PyMC / PyTensor (NUTS)
 
-The same CHOLMOD core is exposed as a **PyTensor** frontend for PyMC's default
-backend, so gradient-based samplers (NUTS) can differentiate through the sparse
-solve and log-determinant without going through JAX/XLA. It's an optional extra —
-the base package stays JAX-only:
-
-```bash
-pip install "sparsax[pytensor]"
-```
+The same CHOLMOD core is exposed as a **PyTensor** frontend for PyMC's default backend, so
+gradient-based samplers (NUTS) can differentiate through the sparse solve and log-determinant
+without going through JAX/XLA. It's an optional extra — the base package stays JAX-only:
 
 ```python
 import pytensor.tensor as pt
@@ -160,98 +219,34 @@ logp = -0.5 * pt.dot(b, cjpt.solve(Ai, Aj, Ax, b)) + 0.5 * cjpt.logdet(Ai, Aj, A
 g = pt.grad(logp, Ax)                 # solve VJP + logdet (selected-inverse) VJP
 ```
 
-`cjpt.solve`, `cjpt.logdet`, and `cjpt.selinv` mirror the JAX functions and carry
-the same reverse-mode rules (`solve` in `Ax`/`b`, `logdet` in `Ax`); the pattern
-`(Ai, Aj)` is non-differentiable data. On PyTensor ≥ 3.1 the gradient routes
-through `Op.pullback`; older versions use `grad`.
+`cjpt.solve`, `cjpt.logdet`, and `cjpt.selinv` mirror the JAX functions and carry the same
+reverse-mode rules (`solve` in `Ax`/`b`, `logdet` in `Ax`); the pattern `(Ai, Aj)` is
+non-differentiable data. On PyTensor ≥ 3.1 the gradient routes through `Op.pullback`; older
+versions use `grad`.
 
-### Use the C backend, not numba
-
-These Ops implement a pure-Python `perform` (it calls the native core, which
-holds no GIL and does the real work — the CHOLMOD call dominates). PyTensor's
-**C backend** (`FAST_RUN`, the default) calls that `perform` directly with no
-penalty. PyTensor's **numba backend** cannot JIT a Python `perform`, so it falls
-back to *object mode* and prints a `UserWarning` on every call — functionally
-correct but with per-call overhead. Prefer the C backend:
-
-```python
-import pytensor
-
-pytensor.config.mode = "FAST_RUN"     # C backend (default); avoids numba object mode
-# For PyMC, this is the default; if you sample through the numba/JAX linker
-# instead, drive NUTS via the JAX frontend (numpyro/blackjax) rather than these Ops.
-```
-
-Concretely: keep PyMC on its default sampler (C backend) to use these Ops, and
-switch to the JAX frontend above if you deliberately run PyMC's JAX/numba linker.
+> **Prefer the C backend, not numba.** These Ops implement a pure-Python `perform` (it calls
+> the native core, which holds no GIL and does the real work — the CHOLMOD call dominates).
+> PyTensor's **C backend** (`FAST_RUN`, the default) calls that `perform` directly with no
+> penalty. PyTensor's **numba backend** cannot JIT a Python `perform`, so it falls back to
+> *object mode* and prints a `UserWarning` on every call — functionally correct but with
+> per-call overhead. Keep PyMC on its default sampler (C backend) to use these Ops, and switch
+> to the JAX frontend above if you deliberately run PyMC's JAX/numba linker.
 
 ## JAX sparse (`BCOO`)
 
 JAX's native sparse type is `jax.experimental.sparse.BCOO`, whose `.indices` is `(nnz, 2)` and
-`.data` is `(nnz,)`. Convenience wrappers accept one directly:
+`.data` is `(nnz,)`. Convenience wrappers accept one directly (CHOLMOD and KLU alike):
 
 ```python
 from jax.experimental import sparse as jsparse
 A = jsparse.BCOO.fromdense(A_dense)         # or build however you like
 
-x  = sparsax.solve_bcoo(A, b)            # == solve(A.indices[:,0], A.indices[:,1], A.data, b)
+# CHOLMOD
+x  = sparsax.solve_bcoo(A, b)
 ld = sparsax.logdet_bcoo(A)
-x  = sparsax.update_solve_bcoo(A, c, b)  # rank-k update, as below
+x  = sparsax.update_solve_bcoo(A, C, b)     # rank-k update/downdate
+
+# KLU
+x  = sparsax.lu_solve_bcoo(A, b)
+ld = sparsax.lu_logdet_bcoo(A)
 ```
-
-The analysis-reuse speedup is unaffected: the pattern cache keys on the concrete index values
-(exactly a BCOO's `.indices`), so a stable pattern across `jit`/`vmap` calls keeps hitting the
-cache. A full-symmetric BCOO works directly (only the upper triangle is read), and
-unsorted/duplicate entries are handled. Only a plain 2D BCOO (`n_batch=0`, `n_dense=0`) is
-supported.
-
-## Rank-k update / downdate
-
-`update_solve` solves `(A ± C C') x = b` by applying CHOLMOD's `cholmod_updown` to a working
-copy of `A`'s cached factor, instead of refactoring the modified matrix from scratch. `A` is
-factored once; each call is `O(k · path)` where `path` is the elimination-tree path touched by
-`C`'s nonzeros.
-
-```python
-# Add an observation (rank-1, sparse update column) and re-solve, cheaply:
-x = sparsax.update_solve(Ai, Aj, Ax, c, b)                 # (A + c c') x = b
-x = sparsax.update_solve(Ai, Aj, Ax, c, b, downdate=True)  # (A - c c') x = b
-x, ld = sparsax.update_solve(Ai, Aj, Ax, C, b, return_logdet=True)  # C is (n, k)
-```
-
-**When it pays off:** the update column(s) `C` must be **sparse** (a few nonzeros — e.g. one
-data point and its neighbors). On the grid-Laplacian benchmark a rank-1 sparse update is ~3×
-faster than a full factorize+solve. A *dense* `C` walks the whole tree and is slower than
-refactoring — use plain `solve` on the reassembled matrix in that case. The base cached factor
-is never mutated, so `update_solve` is a pure function (works under `jit`; not differentiable).
-
-## Options
-
-```python
-sparsax.set_options(supernodal="simplicial")  # or "auto" (default), "supernodal"
-sparsax.clear_cache()                         # free cached factorizations
-```
-
-For very sparse matrices (e.g. planar/grid graphs), `"simplicial"` often gives faster
-triangular solves; `"supernodal"` (BLAS-based) wins on denser problems. `"auto"` lets
-CHOLMOD choose based on the matrix.
-
-## Status / roadmap
-
-- [x] `solve` (all CHOLMOD solve modes), `logdet`, symbolic + numeric caching, custom VJP,
-      multi-RHS, tests, benchmarks
-- [x] Native batching: `jax.vmap(solve)` → one FFI call looping over the batch in C++
-- [x] `cholmod_updown` rank-k update/downdate (`update_solve`)
-- [x] Cache the simplicial LDL' base factor for updown (rebuilt only on refactor), so the
-      LL'→LDL' conversion is paid once per base change, not once per call
-- [x] `factor_solve` / `sample_gaussian`: factor once, serve many solve chains + logdet from
-      one factor; fuses under `vmap` to one factorization per batch element
-- [x] Differentiable `logdet` (reverse-mode in `Ax`) and the `selinv` selected inverse
-      (Takahashi recurrence over the factor); pairs with `solve`'s VJP for full
-      Gaussian log-density gradients
-- [x] PyTensor frontend (`sparsax.pytensor`, optional extra) with matching autodiff,
-      for PyMC's default backend / NUTS — a second frontend over the same CHOLMOD core
-- [ ] float32 (CHOLMOD 5 single precision) and int64 indices
-- [ ] Autodiff rule for `factor_solve` (currently forward-only)
-- [ ] Wheels / conda-forge packaging
-

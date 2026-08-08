@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -91,7 +92,37 @@ struct PatternEntry {
   cholmod_factor* Lupd = nullptr;
   int64_t factor_epoch = 0;   // bumped on each real (re)factorization of L
   int64_t ldl_epoch = -1;     // epoch Lldl was built from; -1 == not built
+
+  // Value-keyed numeric-factor cache for the token primitives
+  // (factor/solve_factor/logdet_factor). Each NumSlot holds a *copy* of the
+  // base factor L for a given set of COO values; a Factor token references a
+  // slot by index, and solve_factor/logdet_factor reuse that copy without
+  // re-hashing or refactoring. The slot's factor is a CHOLMOD-owned copy, so
+  // the base factor L is never mutated.
+  struct NumSlot {
+    uint64_t hash = 0;
+    std::vector<double> Ax;  // values that produced `Lf`
+    cholmod_factor* Lf = nullptr;
+    double logdet = 0.0;
+  };
+  std::vector<NumSlot> num_cache;
+  size_t num_next = 0;  // round-robin cursor (set alongside set_num_cache_size)
 };
+
+// A Factor token: an opaque reference to a NumSlot in a pattern's num_cache.
+// Stored as an int64 pair (pattern_key, slot) in the XLA buffer; resolved back
+// to a (PatternEntry*, NumSlot*) under the global lock.
+struct FactorRef {
+  uint64_t pattern_key = 0;
+  int64_t slot = -1;
+};
+
+static uint64_t g_factor_next_key = 1;  // 0 reserved for "no pattern"
+static std::mutex g_factor_ref_mtx;
+// Maps a Factor token's pattern_key -> the owning PatternEntry* (raw pointer;
+// safe because the pattern registry never frees entries except in clear_cache,
+// which also clears this map under the same lock).
+static std::unordered_map<uint64_t, PatternEntry*> g_factor_pattern_keys;
 
 static std::unordered_map<uint64_t, std::vector<std::unique_ptr<PatternEntry>>>
     g_registry;
@@ -134,6 +165,9 @@ static void free_entry_locked(PatternEntry* e) {
   if (e->Ework) cholmod_free_dense(&e->Ework, &g_common);
   if (e->Lldl) cholmod_free_factor(&e->Lldl, &g_common);
   if (e->Lupd) cholmod_free_factor(&e->Lupd, &g_common);
+  for (auto& s : e->num_cache)
+    if (s.Lf) cholmod_free_factor(&s.Lf, &g_common);
+  e->num_cache.clear();
 }
 
 // Build CSC (upper triangle, sorted, duplicates merged) and run
@@ -317,6 +351,69 @@ static bool factorize_locked(PatternEntry* e, const double* Ax, int64_t nnz,
   e->factor_epoch++;  // invalidates any cached simplicial copy (Lldl)
   g_num_factorizations++;
   return true;
+}
+
+// Populate (or fetch) a NumSlot for the given Ax values: returns a copy of
+// the base factor for these values. On a cache hit, the existing slot is
+// reused (no refactoring); on a miss, the base is factored and its factor is
+// copied into a new slot. Caller must hold g_mutex.
+static PatternEntry::NumSlot* get_or_make_num_slot_locked(
+    PatternEntry* e, const double* Ax, int64_t nnz, std::string* err) {
+  uint64_t h = fnv1a(Ax, nnz * sizeof(double), 14695981039346656037ULL);
+  for (auto& s : e->num_cache)
+    if (s.hash == h && s.Ax.size() == static_cast<size_t>(nnz) &&
+        std::memcmp(s.Ax.data(), Ax, nnz * sizeof(double)) == 0)
+      return &s;
+  if (!factorize_locked(e, Ax, nnz, err)) return nullptr;
+  cholmod_factor* Lf = cholmod_copy_factor(e->L, &g_common);
+  if (!Lf) {
+    *err = "sparsax: cholmod_copy_factor failed (status " +
+           std::to_string(g_common.status) + ")";
+    return nullptr;
+  }
+  PatternEntry::NumSlot slot;
+  slot.hash = h;
+  slot.Ax.assign(Ax, Ax + nnz);
+  slot.Lf = Lf;
+  slot.logdet = e->logdet;
+  e->num_cache.push_back(std::move(slot));
+  return &e->num_cache.back();
+}
+
+// Decode a Factor token buffer (int64[2] per token, or a batch thereof) into
+// a list of FactorRef. The buffer layout is [key0, slot0, key1, slot1, ...].
+static std::vector<FactorRef> decode_factor_refs(const int64_t* data,
+                                                 int64_t count) {
+  std::vector<FactorRef> refs(count);
+  for (int64_t i = 0; i < count; ++i) {
+    refs[i].pattern_key = static_cast<uint64_t>(data[i * 2]);
+    refs[i].slot = data[i * 2 + 1];
+  }
+  return refs;
+}
+
+// Resolve a FactorRef to its (PatternEntry*, NumSlot*). Caller must hold g_mutex
+// (the pattern registry lock); the factor-ref map is guarded by
+// g_factor_ref_mtx. Returns nullptr on a stale/invalid token and sets `err`.
+static PatternEntry::NumSlot* resolve_factor_ref_locked(
+    const FactorRef& ref, PatternEntry** entry_out, std::string* err) {
+  if (ref.pattern_key == 0 || ref.slot < 0) {
+    *err = "sparsax: invalid factor token (empty)";
+    return nullptr;
+  }
+  std::lock_guard<std::mutex> lk(g_factor_ref_mtx);
+  auto it = g_factor_pattern_keys.find(ref.pattern_key);
+  if (it == g_factor_pattern_keys.end()) {
+    *err = "sparsax: stale factor token (pattern cleared)";
+    return nullptr;
+  }
+  PatternEntry* e = it->second;
+  if (ref.slot >= static_cast<int64_t>(e->num_cache.size())) {
+    *err = "sparsax: stale factor token (slot out of range)";
+    return nullptr;
+  }
+  if (entry_out) *entry_out = e;
+  return &e->num_cache[ref.slot];
 }
 
 // Look up (or build) the pattern entry and (re)factorize it, throwing a Python
@@ -748,6 +845,225 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(CholmodFactorSolveBatchedF64,
                                   .Attr<int64_t>("n"));
 
 // ---------------------------------------------------------------------------
+// factor / solve_factor / logdet_factor: the "hold a numeric factor open"
+// primitives. A factor(A) call computes (or fetches from a value-keyed cache)
+// a numeric factorization of A and returns an opaque token; solve_factor and
+// logdet_factor consume that token for an unbounded sequence of solves + a
+// logdet, without re-hashing Ax or refactoring. This is the structure
+// factor_solve cannot express: a recurrence V_{j+1} = A^{-1}(G V_j) that needs
+// the previous solve's output as the next solve's input.
+//
+// The token is an int64[2] pair (pattern_key, slot) carried as XLA state.
+//   pattern_key — an integer assigned to the PatternEntry on first factor()
+//                 call, registered in g_factor_pattern_keys so the token can
+//                 be resolved back to its pattern after the XLA buffers are
+//                 dropped (e.g. across fori_loop iterations).
+//   slot        — index into PatternEntry::num_cache, the value-keyed numeric
+//                 factor cache. A hit reuses an existing factor copy; a miss
+//                 factors A, copies L into a new slot, and returns its index.
+//
+// Under vmap, factor produces one token per batch element (one factorization
+// per element, matching factor_solve's batch semantics). solve_factor's vmap
+// over b reuses a single token — the key win for the Krylov recurrence, where
+// one factor serves m+1 solves.
+// ---------------------------------------------------------------------------
+
+static ffi::Error FactorF64Impl(ffi::Buffer<ffi::S32> Ai,
+                                ffi::Buffer<ffi::S32> Aj,
+                                ffi::Buffer<ffi::F64> Ax,
+                                ffi::ResultBuffer<ffi::S64> token, int64_t n) {
+  int64_t nnz = static_cast<int64_t>(Ai.element_count());
+  if (static_cast<int64_t>(Aj.element_count()) != nnz ||
+      static_cast<int64_t>(Ax.element_count()) != nnz)
+    return ffi::Error::InvalidArgument(
+        "sparsax: Ai, Aj, Ax must have the same length");
+
+  std::lock_guard<std::mutex> lock(g_mutex);
+  ensure_started_locked();
+
+  std::string err;
+  PatternEntry* e =
+      get_or_create_entry_locked(Ai.typed_data(), Aj.typed_data(), nnz, n, &err);
+  if (!e) return ffi::Error::InvalidArgument(err);
+  PatternEntry::NumSlot* slot =
+      get_or_make_num_slot_locked(e, Ax.typed_data(), nnz, &err);
+  if (!slot) return ffi::Error::Internal(err);
+
+  // Assign a pattern key (the pattern pointer itself, unique while the
+  // pattern is alive) and register it so tokens can be resolved later. The
+  // map is cleared together with the pattern registry in clear_cache.
+  uint64_t key = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(e));
+  {
+    std::lock_guard<std::mutex> lk(g_factor_ref_mtx);
+    g_factor_pattern_keys.emplace(key, e);
+  }
+  int64_t* td = token->typed_data();
+  td[0] = static_cast<int64_t>(key);
+  td[1] = static_cast<int64_t>(slot - &e->num_cache[0]);
+  return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(CholmodFactorF64, FactorF64Impl,
+                              ffi::Ffi::Bind()
+                                  .Arg<ffi::Buffer<ffi::S32>>()   // Ai
+                                  .Arg<ffi::Buffer<ffi::S32>>()   // Aj
+                                  .Arg<ffi::Buffer<ffi::F64>>()   // Ax
+                                  .Ret<ffi::Buffer<ffi::S64>>()   // token [2]
+                                  .Attr<int64_t>("n"));
+
+static ffi::Error SolveFactorF64Impl(ffi::Buffer<ffi::S64> token,
+                                     ffi::Buffer<ffi::F64> b,
+                                     ffi::ResultBuffer<ffi::F64> x,
+                                     int64_t mode) {
+  auto bdims = b.dimensions();
+  if (bdims.size() < 1 || bdims.size() > 2)
+    return ffi::Error::InvalidArgument("sparsax: b must be 1D or 2D");
+  int64_t n = bdims[0];
+  int64_t nrhs = bdims.size() == 2 ? bdims[1] : 1;
+  if (static_cast<int64_t>(token.element_count()) != 2)
+    return ffi::Error::InvalidArgument("sparsax: factor token must be int64[2]");
+  if (mode < 0 || mode > 8)
+    return ffi::Error::InvalidArgument("sparsax: invalid solve mode");
+
+  std::vector<FactorRef> refs = decode_factor_refs(token.typed_data(), 1);
+
+  std::lock_guard<std::mutex> lock(g_mutex);
+  ensure_started_locked();
+
+  std::string err;
+  PatternEntry* e = nullptr;
+  PatternEntry::NumSlot* slot = resolve_factor_ref_locked(refs[0], &e, &err);
+  if (!slot) return ffi::Error::InvalidArgument(err);
+
+  std::vector<double> scratch;
+  return solve_one_locked(e, slot->Lf, static_cast<int>(mode), b.typed_data(), n,
+                          nrhs, x->typed_data(), &scratch);
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(CholmodSolveFactorF64, SolveFactorF64Impl,
+                              ffi::Ffi::Bind()
+                                  .Arg<ffi::Buffer<ffi::S64>>()   // token [2]
+                                  .Arg<ffi::Buffer<ffi::F64>>()   // b
+                                  .Ret<ffi::Buffer<ffi::F64>>()   // x
+                                  .Attr<int64_t>("mode"));
+
+// Batched solve_factor: the leading axis is the batch. Two vmap shapes are
+// supported:
+//   (a) vmap over b against ONE factor: token is unbatched int64[2], b is
+//       (B, n[, nrhs]) — the key Krylov-recurrence case (m+1 solves, one
+//       factor).
+//   (b) vmap over (token, b) — one factor per batch element: token is
+//       (B, 2), b is (B, n[, nrhs]).
+static ffi::Error SolveFactorBatchedF64Impl(ffi::Buffer<ffi::S64> token,
+                                            ffi::Buffer<ffi::F64> b,
+                                            ffi::ResultBuffer<ffi::F64> x,
+                                            int64_t mode) {
+  auto bdims = b.dimensions();
+  if (bdims.size() < 2 || bdims.size() > 3)
+    return ffi::Error::InvalidArgument(
+        "sparsax: batched b must be 2D or 3D");
+  int64_t batch = bdims[0];
+  int64_t n = bdims[1];
+  int64_t nrhs = bdims.size() == 3 ? bdims[2] : 1;
+  auto tdims = token.dimensions();
+  bool token_batched = (tdims.size() == 2 && tdims[0] == batch && tdims[1] == 2);
+  bool token_scalar = (tdims.size() == 1 && tdims[0] == 2);
+  if (!token_batched && !token_scalar)
+    return ffi::Error::InvalidArgument(
+        "sparsax: token must be int64[2] or (batch, 2) matching b");
+  if (mode < 0 || mode > 8)
+    return ffi::Error::InvalidArgument("sparsax: invalid solve mode");
+
+  std::vector<FactorRef> refs;
+  if (token_scalar) {
+    refs = decode_factor_refs(token.typed_data(), 1);
+  } else {
+    refs = decode_factor_refs(token.typed_data(), batch);
+  }
+
+  std::lock_guard<std::mutex> lock(g_mutex);
+  ensure_started_locked();
+
+  const double* bd = b.typed_data();
+  double* xd = x->typed_data();
+  int64_t bstride = n * nrhs;
+  std::vector<double> scratch;
+  for (int64_t s = 0; s < batch; ++s) {
+    const FactorRef& ref = token_scalar ? refs[0] : refs[s];
+    std::string err;
+    PatternEntry* e = nullptr;
+    PatternEntry::NumSlot* slot = resolve_factor_ref_locked(ref, &e, &err);
+    if (!slot) return ffi::Error::InvalidArgument(err);
+    ffi::Error r = solve_one_locked(e, slot->Lf, static_cast<int>(mode),
+                                    bd + s * bstride, n, nrhs,
+                                    xd + s * bstride, &scratch);
+    if (r.failure()) return r;
+  }
+  return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(CholmodSolveFactorBatchedF64,
+                              SolveFactorBatchedF64Impl,
+                              ffi::Ffi::Bind()
+                                  .Arg<ffi::Buffer<ffi::S64>>()   // token [2] or [B,2]
+                                  .Arg<ffi::Buffer<ffi::F64>>()   // b [B,...]
+                                  .Ret<ffi::Buffer<ffi::F64>>()   // x [B,...]
+                                  .Attr<int64_t>("mode"));
+
+static ffi::Error LogdetFactorF64Impl(ffi::Buffer<ffi::S64> token,
+                                      ffi::ResultBuffer<ffi::F64> out) {
+  if (static_cast<int64_t>(token.element_count()) != 2)
+    return ffi::Error::InvalidArgument("sparsax: factor token must be int64[2]");
+
+  std::vector<FactorRef> refs = decode_factor_refs(token.typed_data(), 1);
+
+  std::lock_guard<std::mutex> lock(g_mutex);
+  ensure_started_locked();
+
+  std::string err;
+  PatternEntry::NumSlot* slot = resolve_factor_ref_locked(refs[0], nullptr, &err);
+  if (!slot) return ffi::Error::InvalidArgument(err);
+  out->typed_data()[0] = slot->logdet;
+  return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(CholmodLogdetFactorF64, LogdetFactorF64Impl,
+                              ffi::Ffi::Bind()
+                                  .Arg<ffi::Buffer<ffi::S64>>()   // token [2]
+                                  .Ret<ffi::Buffer<ffi::F64>>()   // logdet
+                                  );
+
+// Batched logdet_factor: vmap over a batch of tokens (one logdet per chain).
+static ffi::Error LogdetFactorBatchedF64Impl(
+    ffi::Buffer<ffi::S64> token, ffi::ResultBuffer<ffi::F64> out) {
+  auto tdims = token.dimensions();
+  if (tdims.size() != 2 || tdims[1] != 2)
+    return ffi::Error::InvalidArgument(
+        "sparsax: batched token must be (batch, 2)");
+  int64_t batch = tdims[0];
+  std::vector<FactorRef> refs = decode_factor_refs(token.typed_data(), batch);
+
+  std::lock_guard<std::mutex> lock(g_mutex);
+  ensure_started_locked();
+
+  double* od = out->typed_data();
+  for (int64_t s = 0; s < batch; ++s) {
+    std::string err;
+    PatternEntry::NumSlot* slot = resolve_factor_ref_locked(refs[s], nullptr, &err);
+    if (!slot) return ffi::Error::InvalidArgument(err);
+    od[s] = slot->logdet;
+  }
+  return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(CholmodLogdetFactorBatchedF64,
+                              LogdetFactorBatchedF64Impl,
+                              ffi::Ffi::Bind()
+                                  .Arg<ffi::Buffer<ffi::S64>>()   // token [B,2]
+                                  .Ret<ffi::Buffer<ffi::F64>>()   // logdet [B]
+                                  );
+
+// ---------------------------------------------------------------------------
 // Simplicial LDL' base factor (Lldl). cholmod_updown and the selected-inverse
 // recurrence both need an LDL' (not LL', not supernodal) factor. Lldl is a
 // persistent simplicial LDL' copy of the base factor L, rebuilt only when the
@@ -1163,6 +1479,64 @@ static std::unordered_map<uint64_t, std::vector<std::shared_ptr<KluPattern>>>
 // Total numeric (re)factorizations, for tests/introspection (atomic: threaded).
 static std::atomic<int64_t> g_klu_num_factorizations{0};
 
+// ---------------------------------------------------------------------------
+// KLU factor tokens (lu_factor / lu_solve_factor): the non-symmetric analogue
+// of the CHOLMOD factor/solve_factor primitives. A lu_factor(A) call computes
+// (or fetches from the per-pattern LRU) a klu_numeric for Ax and returns an
+// opaque int64[2] token; lu_solve_factor consumes it for an unbounded sequence
+// of solves (A x = b or A^T x = b) without re-hashing Ax or refactoring. This
+// expresses the recurrence V_{j+1} = A^{-1}(G V_j) that lu_solve cannot.
+//
+// The token holds a *strong* shared_ptr<KluNumericHolder> (KluNumPtr) in a
+// side table, so the factor cannot be evicted by the per-pattern LRU while a
+// token references it — the KLU LRU eviction simply drops its shared_ptr, but
+// the side table's copy keeps the factor alive until the token is discarded by
+// XLA. This differs from the CHOLMOD path (which copies the factor) because
+// KLU numeric factors are already refcounted shared objects.
+//
+// There is no lu_logdet_factor: KLU factors non-symmetric matrices, and det
+// is not needed for the spatial-sampler use case (the log-density's logdet
+// comes from the CHOLMOD path on the symmetric precision matrix).
+// ---------------------------------------------------------------------------
+
+// A KLU factor token: an opaque reference to a slot in g_klu_factor_slots.
+struct KluFactorRef {
+  uint64_t slot_key = 0;  // key into g_klu_factor_slots (0 == invalid)
+};
+
+// A held factor: the pattern (for the symbolic + structure) plus the numeric
+// factor. Owned by a shared_ptr so the token table and any in-flight solve
+// share ownership. Cleared by clear_cache (which clears g_klu_registry first,
+// then g_klu_factor_slots under g_klu_reg_mtx — same lock as the registry).
+struct KluHeldFactor {
+  std::shared_ptr<KluPattern> pat;
+  KluNumPtr num;
+};
+static std::mutex g_klu_factor_mtx;  // guards g_klu_factor_slots only
+static std::unordered_map<uint64_t, KluHeldFactor> g_klu_factor_slots;
+static uint64_t g_klu_factor_next_key = 1;  // 0 reserved for "invalid"
+
+// Resolve a KluFactorRef to its held factor. Caller must hold g_klu_solve_mtx
+// (the numeric work is serialized; the lookup takes g_klu_factor_mtx briefly).
+// Returns nullptr and sets `err` on a stale/invalid token.
+static std::shared_ptr<KluHeldFactor> resolve_klu_factor_ref_locked(
+    const KluFactorRef& ref, std::string* err) {
+  if (ref.slot_key == 0) {
+    *err = "sparsax(klu): invalid factor token (empty)";
+    return nullptr;
+  }
+  std::lock_guard<std::mutex> lk(g_klu_factor_mtx);
+  auto it = g_klu_factor_slots.find(ref.slot_key);
+  if (it == g_klu_factor_slots.end()) {
+    *err = "sparsax(klu): stale factor token (slot cleared)";
+    return nullptr;
+  }
+  // Return a shared_ptr copy so the caller's solve is safe even if the token
+  // is cleared concurrently (clear_cache takes g_klu_solve_mtx too, so this
+  // cannot happen mid-solve, but the copy is cheap and defensive).
+  return std::make_shared<KluHeldFactor>(it->second);
+}
+
 // Serializes the KLU factor/solve calls.  SuiteSparse KLU factor/solve are not
 // safely *concurrent* across threads sharing a Symbolic (they gave wrong draws
 // and no speedup under jax.pmap — KLU parallelises across processes, as the
@@ -1326,6 +1700,34 @@ static KluNumPtr klu_get_factor(const std::shared_ptr<KluPattern>& pat,
   return holder;
 }
 
+// log|det(A)| from a klu_numeric factor. KLU factors A (possibly row-scaled by
+// Rs and BTF-permuted) as L U Pnum; the diagonal of U is held in num->Udiag,
+// size n. For a non-singular matrix, |det(A)| = prod_i |U_ii| * prod_i |Rs_i|
+// (row i is scaled by 1/Rs_i before factoring, so the un-scaled determinant is
+// the scaled one times the product of the scale factors). Rs is NULL when no
+// scaling is applied. The BTF off-diagonal blocks do not affect the diagonal
+// product. Returns the logdet in *out; sets it non-finite on a singular U
+// (any zero or NaN U_ii).
+static double klu_logdet_one(const klu_numeric* num, int64_t n) {
+  const double* Udiag = static_cast<const double*>(num->Udiag);
+  const double* Rs = num->Rs;
+  double acc = 0.0;
+  for (int64_t i = 0; i < n; ++i) {
+    double u = Udiag[i];
+    if (u == 0.0 || !std::isfinite(u)) return std::numeric_limits<double>::quiet_NaN();
+    acc += std::log(std::fabs(u));
+  }
+  if (Rs) {
+    for (int64_t i = 0; i < n; ++i) {
+      double r = Rs[i];
+      if (r == 0.0 || !std::isfinite(r))
+        return std::numeric_limits<double>::quiet_NaN();
+      acc += std::log(std::fabs(r));
+    }
+  }
+  return acc;
+}
+
 // Solve A x = b (trans == false) or A^T x = b (trans == true, used by the VJP)
 // for one right-hand-side block, using this thread's common + scratch. b/x are
 // row-major (JAX layout); KLU is column-major with leading dimension n, so
@@ -1479,6 +1881,308 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuSolveBatchedF64, LuSolveBatchedF64Impl,
                                   .Attr<int64_t>("trans"));
 
 // ---------------------------------------------------------------------------
+// lu_factor / lu_solve_factor: the non-symmetric "hold a numeric factor open"
+// primitives, mirroring the CHOLMOD factor/solve_factor tokens. A lu_factor(A)
+// call computes (or fetches from the per-pattern LRU) a klu_numeric for Ax and
+// returns an opaque int64[2] token; lu_solve_factor consumes it for an
+// unbounded sequence of A x = b / A^T x = b solves without re-hashing Ax or
+// refactoring. This is the recurrence structure lu_solve cannot express
+// (V_{j+1} = A^{-1}(G V_j) needs the previous solve's output as the next RHS).
+//
+// The token holds a strong shared_ptr<KluNumericHolder> in g_klu_factor_slots,
+// so the per-pattern LRU cannot evict the factor while a token references it.
+// Under vmap, lu_factor produces one token per batch element (one factorization
+// each); vmap(lu_solve_factor, in_axes=(None, 0)) reuses one token across a
+// batch of RHS — the key Krylov-recurrence shape (one factor, m+1 solves).
+//
+// No lu_logdet_factor: KLU factors non-symmetric matrices, and det is not
+// needed for the spatial-sampler use case (the log-density logdet comes from
+// the CHOLMOD path on the symmetric precision matrix).
+// ---------------------------------------------------------------------------
+
+static ffi::Error LuFactorF64Impl(ffi::Buffer<ffi::S32> Ai,
+                                  ffi::Buffer<ffi::S32> Aj,
+                                  ffi::Buffer<ffi::F64> Ax,
+                                  ffi::ResultBuffer<ffi::S64> token,
+                                  int64_t n) {
+  int64_t nnz = static_cast<int64_t>(Ai.element_count());
+  if (static_cast<int64_t>(Aj.element_count()) != nnz ||
+      static_cast<int64_t>(Ax.element_count()) != nnz)
+    return ffi::Error::InvalidArgument(
+        "sparsax(klu): Ai, Aj, Ax must have the same length");
+
+  std::string err;
+  auto pat = klu_get_pattern(Ai.typed_data(), Aj.typed_data(), nnz, n, &err);
+  if (!pat) return ffi::Error::InvalidArgument(err);
+  std::lock_guard<std::mutex> lk(g_klu_solve_mtx);
+  KluNumPtr num = klu_get_factor(pat, Ax.typed_data(), nnz, &err);
+  if (!num) return ffi::Error::Internal(err);
+
+  // Register a held factor in the token table. The shared_ptr copy keeps the
+  // factor alive independently of the per-pattern LRU.
+  uint64_t key;
+  {
+    std::lock_guard<std::mutex> fk(g_klu_factor_mtx);
+    key = g_klu_factor_next_key++;
+    g_klu_factor_slots.emplace(key, KluHeldFactor{pat, num});
+  }
+  int64_t* td = token->typed_data();
+  td[0] = static_cast<int64_t>(key);
+  td[1] = 0;  // reserved (single-slot token; KLU uses one key, not key+slot)
+  return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuFactorF64, LuFactorF64Impl,
+                              ffi::Ffi::Bind()
+                                  .Arg<ffi::Buffer<ffi::S32>>()   // Ai
+                                  .Arg<ffi::Buffer<ffi::S32>>()   // Aj
+                                  .Arg<ffi::Buffer<ffi::F64>>()   // Ax
+                                  .Ret<ffi::Buffer<ffi::S64>>()   // token [2]
+                                  .Attr<int64_t>("n"));
+
+static ffi::Error LuSolveFactorF64Impl(ffi::Buffer<ffi::S64> token,
+                                       ffi::Buffer<ffi::F64> b,
+                                       ffi::ResultBuffer<ffi::F64> x,
+                                       int64_t trans) {
+  auto bdims = b.dimensions();
+  if (bdims.size() < 1 || bdims.size() > 2)
+    return ffi::Error::InvalidArgument("sparsax(klu): b must be 1D or 2D");
+  int64_t n = bdims[0];
+  int64_t nrhs = bdims.size() == 2 ? bdims[1] : 1;
+  if (static_cast<int64_t>(token.element_count()) != 2)
+    return ffi::Error::InvalidArgument(
+        "sparsax(klu): factor token must be int64[2]");
+
+  KluFactorRef ref;
+  ref.slot_key = static_cast<uint64_t>(token.typed_data()[0]);
+
+  std::lock_guard<std::mutex> lk(g_klu_solve_mtx);
+  std::string err;
+  auto held = resolve_klu_factor_ref_locked(ref, &err);
+  if (!held) return ffi::Error::InvalidArgument(err);
+  return klu_solve_one(held->pat.get(), held->num->num, trans != 0,
+                       b.typed_data(), n, nrhs, x->typed_data());
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuSolveFactorF64, LuSolveFactorF64Impl,
+                              ffi::Ffi::Bind()
+                                  .Arg<ffi::Buffer<ffi::S64>>()   // token [2]
+                                  .Arg<ffi::Buffer<ffi::F64>>()   // b
+                                  .Ret<ffi::Buffer<ffi::F64>>()   // x
+                                  .Attr<int64_t>("trans"));
+
+// Batched lu_solve_factor: the leading axis is the batch. Two vmap shapes:
+//   (a) vmap over b against ONE factor: token unbatched int64[2], b is
+//       (B, n[, nrhs]) — the Krylov-recurrence case (m+1 solves, one factor).
+//   (b) vmap over (token, b) — one factor per batch element: token (B, 2),
+//       b (B, n[, nrhs]).
+static ffi::Error LuSolveFactorBatchedF64Impl(ffi::Buffer<ffi::S64> token,
+                                              ffi::Buffer<ffi::F64> b,
+                                              ffi::ResultBuffer<ffi::F64> x,
+                                              int64_t trans) {
+  auto bdims = b.dimensions();
+  if (bdims.size() < 2 || bdims.size() > 3)
+    return ffi::Error::InvalidArgument(
+        "sparsax(klu): batched b must be 2D or 3D");
+  int64_t batch = bdims[0];
+  int64_t n = bdims[1];
+  int64_t nrhs = bdims.size() == 3 ? bdims[2] : 1;
+  auto tdims = token.dimensions();
+  bool token_batched = (tdims.size() == 2 && tdims[0] == batch && tdims[1] == 2);
+  bool token_scalar = (tdims.size() == 1 && tdims[0] == 2);
+  if (!token_batched && !token_scalar)
+    return ffi::Error::InvalidArgument(
+        "sparsax(klu): token must be int64[2] or (batch, 2) matching b");
+
+  std::vector<KluFactorRef> refs;
+  if (token_scalar) {
+    refs.push_back(
+        {static_cast<uint64_t>(token.typed_data()[0])});
+  } else {
+    refs.reserve(batch);
+    for (int64_t s = 0; s < batch; ++s)
+      refs.push_back(
+          {static_cast<uint64_t>(token.typed_data()[s * 2])});
+  }
+
+  std::lock_guard<std::mutex> lk(g_klu_solve_mtx);
+  const double* bd = b.typed_data();
+  double* xd = x->typed_data();
+  int64_t bstride = n * nrhs;
+  for (int64_t s = 0; s < batch; ++s) {
+    const KluFactorRef& ref = token_scalar ? refs[0] : refs[s];
+    std::string err;
+    auto held = resolve_klu_factor_ref_locked(ref, &err);
+    if (!held) return ffi::Error::InvalidArgument(err);
+    ffi::Error r =
+        klu_solve_one(held->pat.get(), held->num->num, trans != 0,
+                      bd + s * bstride, n, nrhs, xd + s * bstride);
+    if (r.failure()) return r;
+  }
+  return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuSolveFactorBatchedF64,
+                              LuSolveFactorBatchedF64Impl,
+                              ffi::Ffi::Bind()
+                                  .Arg<ffi::Buffer<ffi::S64>>()   // token [2] or [B,2]
+                                  .Arg<ffi::Buffer<ffi::F64>>()   // b [B,...]
+                                  .Ret<ffi::Buffer<ffi::F64>>()   // x [B,...]
+                                  .Attr<int64_t>("trans"));
+
+// ---------------------------------------------------------------------------
+// lu_logdet: log|det(A)| for a general (non-symmetric) sparse matrix via KLU.
+//
+// Computed from the LU factor's U diagonal (plus the row-scale correction): an
+// O(n) sum of log|U_ii|, far cheaper than anything Python-side, and genuinely
+// needed for non-symmetric spatial models where log|I - rho W| appears in the
+// log-likelihood Jacobian and W is row-standardised (cannot go through CHOLMOD).
+// Shares the per-pattern LRU factor cache with lu_solve, so a lu_solve and a
+// lu_logdet with identical values factorize only once. Differentiable is not
+// provided (the non-symmetric logdet gradient is the full selected inverse,
+// which KLU does not expose); use the CHOLMOD path for symmetric A when a
+// gradient is needed.
+//
+// lu_logdet_factor: the same quantity read from a held token (no refactor).
+// ---------------------------------------------------------------------------
+
+static ffi::Error LuLogdetF64Impl(ffi::Buffer<ffi::S32> Ai,
+                                 ffi::Buffer<ffi::S32> Aj,
+                                 ffi::Buffer<ffi::F64> Ax,
+                                 ffi::ResultBuffer<ffi::F64> out, int64_t n) {
+  int64_t nnz = static_cast<int64_t>(Ai.element_count());
+  if (static_cast<int64_t>(Aj.element_count()) != nnz ||
+      static_cast<int64_t>(Ax.element_count()) != nnz)
+    return ffi::Error::InvalidArgument(
+        "sparsax(klu): Ai, Aj, Ax must have the same length");
+
+  std::string err;
+  auto pat = klu_get_pattern(Ai.typed_data(), Aj.typed_data(), nnz, n, &err);
+  if (!pat) return ffi::Error::InvalidArgument(err);
+  std::lock_guard<std::mutex> lk(g_klu_solve_mtx);
+  KluNumPtr num = klu_get_factor(pat, Ax.typed_data(), nnz, &err);
+  if (!num) return ffi::Error::Internal(err);
+
+  double ld = klu_logdet_one(num->num, n);
+  if (!std::isfinite(ld))
+    return ffi::Error::Internal("sparsax(klu): matrix is singular");
+  out->typed_data()[0] = ld;
+  return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuLogdetF64, LuLogdetF64Impl,
+                              ffi::Ffi::Bind()
+                                  .Arg<ffi::Buffer<ffi::S32>>()   // Ai
+                                  .Arg<ffi::Buffer<ffi::S32>>()   // Aj
+                                  .Arg<ffi::Buffer<ffi::F64>>()   // Ax
+                                  .Ret<ffi::Buffer<ffi::F64>>()   // logdet
+                                  .Attr<int64_t>("n"));
+
+// Batched lu_logdet: (Ai, Aj, Ax[B,nnz]; n) -> logdet[B]. One FFI call factors
+// the whole batch (reusing the LRU per element) and reads each U diagonal.
+static ffi::Error LuLogdetBatchedF64Impl(ffi::Buffer<ffi::S32> Ai,
+                                         ffi::Buffer<ffi::S32> Aj,
+                                         ffi::Buffer<ffi::F64> Ax,
+                                         ffi::ResultBuffer<ffi::F64> out,
+                                         int64_t n) {
+  int64_t nnz = static_cast<int64_t>(Ai.element_count());
+  auto axdims = Ax.dimensions();
+  if (axdims.size() != 2 || axdims[1] != nnz)
+    return ffi::Error::InvalidArgument(
+        "sparsax(klu): batched Ax must have shape (batch, nnz)");
+  if (static_cast<int64_t>(Aj.element_count()) != nnz)
+    return ffi::Error::InvalidArgument(
+        "sparsax(klu): Ai, Aj must have the same length");
+  int64_t batch = axdims[0];
+
+  std::string err;
+  auto pat = klu_get_pattern(Ai.typed_data(), Aj.typed_data(), nnz, n, &err);
+  if (!pat) return ffi::Error::InvalidArgument(err);
+  std::lock_guard<std::mutex> lk(g_klu_solve_mtx);
+  const double* Axd = Ax.typed_data();
+  double* od = out->typed_data();
+  for (int64_t s = 0; s < batch; ++s) {
+    KluNumPtr num = klu_get_factor(pat, Axd + s * nnz, nnz, &err);
+    if (!num) return ffi::Error::Internal(err);
+    double ld = klu_logdet_one(num->num, n);
+    if (!std::isfinite(ld))
+      return ffi::Error::Internal("sparsax(klu): matrix is singular");
+    od[s] = ld;
+  }
+  return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuLogdetBatchedF64,
+                              LuLogdetBatchedF64Impl,
+                              ffi::Ffi::Bind()
+                                  .Arg<ffi::Buffer<ffi::S32>>()   // Ai
+                                  .Arg<ffi::Buffer<ffi::S32>>()   // Aj
+                                  .Arg<ffi::Buffer<ffi::F64>>()   // Ax [B,nnz]
+                                  .Ret<ffi::Buffer<ffi::F64>>()   // logdet [B]
+                                  .Attr<int64_t>("n"));
+
+static ffi::Error LuLogdetFactorF64Impl(ffi::Buffer<ffi::S64> token,
+                                       ffi::ResultBuffer<ffi::F64> out) {
+  if (static_cast<int64_t>(token.element_count()) != 2)
+    return ffi::Error::InvalidArgument(
+        "sparsax(klu): factor token must be int64[2]");
+  KluFactorRef ref;
+  ref.slot_key = static_cast<uint64_t>(token.typed_data()[0]);
+
+  std::lock_guard<std::mutex> lk(g_klu_solve_mtx);
+  std::string err;
+  auto held = resolve_klu_factor_ref_locked(ref, &err);
+  if (!held) return ffi::Error::InvalidArgument(err);
+  int64_t n = held->pat->n;
+  double ld = klu_logdet_one(held->num->num, n);
+  if (!std::isfinite(ld))
+    return ffi::Error::Internal("sparsax(klu): matrix is singular");
+  out->typed_data()[0] = ld;
+  return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuLogdetFactorF64, LuLogdetFactorF64Impl,
+                              ffi::Ffi::Bind()
+                                  .Arg<ffi::Buffer<ffi::S64>>()   // token [2]
+                                  .Ret<ffi::Buffer<ffi::F64>>()   // logdet
+                                  );
+
+// Batched lu_logdet_factor: vmap over a batch of tokens (one logdet per chain).
+static ffi::Error LuLogdetFactorBatchedF64Impl(ffi::Buffer<ffi::S64> token,
+                                               ffi::ResultBuffer<ffi::F64> out) {
+  auto tdims = token.dimensions();
+  if (tdims.size() != 2 || tdims[1] != 2)
+    return ffi::Error::InvalidArgument(
+        "sparsax(klu): batched token must be (batch, 2)");
+  int64_t batch = tdims[0];
+  std::vector<KluFactorRef> refs;
+  refs.reserve(batch);
+  for (int64_t s = 0; s < batch; ++s)
+    refs.push_back({static_cast<uint64_t>(token.typed_data()[s * 2])});
+
+  std::lock_guard<std::mutex> lk(g_klu_solve_mtx);
+  double* od = out->typed_data();
+  for (int64_t s = 0; s < batch; ++s) {
+    std::string err;
+    auto held = resolve_klu_factor_ref_locked(refs[s], &err);
+    if (!held) return ffi::Error::InvalidArgument(err);
+    int64_t n = held->pat->n;
+    double ld = klu_logdet_one(held->num->num, n);
+    if (!std::isfinite(ld))
+      return ffi::Error::Internal("sparsax(klu): matrix is singular");
+    od[s] = ld;
+  }
+  return ffi::Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuLogdetFactorBatchedF64,
+                              LuLogdetFactorBatchedF64Impl,
+                              ffi::Ffi::Bind()
+                                  .Arg<ffi::Buffer<ffi::S64>>()   // token [B,2]
+                                  .Ret<ffi::Buffer<ffi::F64>>()   // logdet [B]
+                                  );
+
+// ---------------------------------------------------------------------------
 // nanobind module
 // ---------------------------------------------------------------------------
 
@@ -1507,6 +2211,23 @@ NB_MODULE(sparsax_cpp, m) {
     return nb::capsule(reinterpret_cast<void*>(CholmodFactorSolveBatchedF64));
   });
 
+  // factor / solve_factor / logdet_factor — hold-a-numeric-factor-open tokens.
+  m.def("factor_f64_capsule", []() {
+    return nb::capsule(reinterpret_cast<void*>(CholmodFactorF64));
+  });
+  m.def("solve_factor_f64_capsule", []() {
+    return nb::capsule(reinterpret_cast<void*>(CholmodSolveFactorF64));
+  });
+  m.def("solve_factor_batched_f64_capsule", []() {
+    return nb::capsule(reinterpret_cast<void*>(CholmodSolveFactorBatchedF64));
+  });
+  m.def("logdet_factor_f64_capsule", []() {
+    return nb::capsule(reinterpret_cast<void*>(CholmodLogdetFactorF64));
+  });
+  m.def("logdet_factor_batched_f64_capsule", []() {
+    return nb::capsule(reinterpret_cast<void*>(CholmodLogdetFactorBatchedF64));
+  });
+
   // KLU sparse-LU handlers for non-symmetric matrices.
   m.def("lu_solve_f64_capsule", []() {
     return nb::capsule(reinterpret_cast<void*>(CholgraphLuSolveF64));
@@ -1514,10 +2235,52 @@ NB_MODULE(sparsax_cpp, m) {
   m.def("lu_solve_batched_f64_capsule", []() {
     return nb::capsule(reinterpret_cast<void*>(CholgraphLuSolveBatchedF64));
   });
+  // KLU factor-token + logdet handlers.
+  m.def("lu_factor_f64_capsule", []() {
+    return nb::capsule(reinterpret_cast<void*>(CholgraphLuFactorF64));
+  });
+  m.def("lu_solve_factor_f64_capsule", []() {
+    return nb::capsule(reinterpret_cast<void*>(CholgraphLuSolveFactorF64));
+  });
+  m.def("lu_solve_factor_batched_f64_capsule", []() {
+    return nb::capsule(reinterpret_cast<void*>(CholgraphLuSolveFactorBatchedF64));
+  });
+  m.def("lu_logdet_f64_capsule", []() {
+    return nb::capsule(reinterpret_cast<void*>(CholgraphLuLogdetF64));
+  });
+  m.def("lu_logdet_batched_f64_capsule", []() {
+    return nb::capsule(reinterpret_cast<void*>(CholgraphLuLogdetBatchedF64));
+  });
+  m.def("lu_logdet_factor_f64_capsule", []() {
+    return nb::capsule(reinterpret_cast<void*>(CholgraphLuLogdetFactorF64));
+  });
+  m.def("lu_logdet_factor_batched_f64_capsule", []() {
+    return nb::capsule(reinterpret_cast<void*>(CholgraphLuLogdetFactorBatchedF64));
+  });
 
   // Numeric factors retained per KLU pattern *per thread* (>= the distinct ρ
   // touched in a chain's sweep for the Krylov-basis reuse to land).
   m.def("set_lu_cache_size", [](size_t n) { g_lu_cache_cap = n < 1 ? 1 : n; });
+
+  // Cap on the value-keyed numeric-factor cache per CHOLMOD pattern for the
+  // factor/solve_factor/logdet_factor token primitives. When a pattern's
+  // num_cache would exceed this cap, the oldest slot (by insertion order) is
+  // evicted and its factor copy freed; any outstanding token referencing it
+  // becomes stale and resolves to an error. The token-based API is the
+  // recommended path when guaranteed reuse is needed (hold the token), so this
+  // cache mostly matters for repeated factor() calls with the same Ax.
+  m.def("set_num_cache_size", [](size_t n) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    // Truncate existing caches immediately if shrinking.
+    for (auto& [h, chain] : g_registry)
+      for (auto& e : chain) {
+        if (e->num_cache.size() <= n) continue;
+        for (size_t i = n; i < e->num_cache.size(); ++i)
+          if (e->num_cache[i].Lf) cholmod_free_factor(&e->num_cache[i].Lf, &g_common);
+        e->num_cache.resize(n);
+        if (e->num_next > n) e->num_next = 0;
+      }
+  });
 
   // Numpy-callable core, for non-JAX frontends (sparsax.pytensor).
   m.def("solve_np", &solve_np);
@@ -1541,14 +2304,21 @@ NB_MODULE(sparsax_cpp, m) {
           for (auto& e : chain) free_entry_locked(e.get());
         g_registry.clear();
       }
+      // Invalidate all outstanding factor tokens: their pattern pointers are
+      // dangling once the patterns are freed, so drop the key map under the
+      // same lock that owns the pattern lifetime.
+      std::lock_guard<std::mutex> lk(g_factor_ref_mtx);
+      g_factor_pattern_keys.clear();
     }
     // Drop shared KLU patterns; each pattern owns its numeric-factor cache, so
     // those factors are freed once no in-flight solve still holds them (they are
     // refcounted).  (Invoke when the sampler is idle, not concurrently with
-    // active solves.)
+    // active solves.) Also invalidate outstanding KLU factor tokens.
     {
       std::lock_guard<std::mutex> lk(g_klu_reg_mtx);
       g_klu_registry.clear();
+      std::lock_guard<std::mutex> fk(g_klu_factor_mtx);
+      g_klu_factor_slots.clear();
     }
   });
 
