@@ -499,10 +499,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-it-works" class="md-nav__link">
+  <a href="#features" class="md-nav__link">
     
     <span class="md-ellipsis">
-      <span>How it works</span>
+      <span>Features</span>
     </span>
   </a>
   
@@ -519,10 +519,30 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
+  <a href="#quick-start-cholmod-symmetric-positive-definite-a" class="md-nav__link">
     
     <span class="md-ellipsis">
-      <span>Quick start</span>
+      <span>Quick start:<wbr> CHOLMOD <wbr>(symmetric positive definite A)</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start-klu-general-non-symmetric-a" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Quick start:<wbr> KLU <wbr>(general non-<wbr>symmetric A)</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>How it works</span>
     </span>
   </a>
   
@@ -556,22 +576,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="PyMC / PyTensor (NUTS)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#use-the-c-backend-not-numba" class="md-nav__link">
-    
-    <span class="md-ellipsis">
-      <span>Use the C backend, not numba</span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -579,36 +583,6 @@
     
     <span class="md-ellipsis">
       <span>JAX sparse <wbr>(BCOO)</span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#rank-k-update-downdate" class="md-nav__link">
-    
-    <span class="md-ellipsis">
-      <span>Rank-<wbr>k update / downdate</span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#options" class="md-nav__link">
-    
-    <span class="md-ellipsis">
-      <span>Options</span>
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#status-roadmap" class="md-nav__link">
-    
-    <span class="md-ellipsis">
-      <span>Status / roadmap</span>
     </span>
   </a>
   
@@ -639,37 +613,63 @@
   
 
 <p><a class="reference external" href="https://github.com/knaaptime/sparsax/actions/workflows/unittests.yml"><img alt="Continuous Integration" src="https://github.com/knaaptime/sparsax/actions/workflows/unittests.yml/badge.svg" /></a>
-<a class="reference external" href="https://codecov.io/gh/knaaptime/sparsax"><img alt="codecov" src="https://codecov.io/gh/knaaptime/sparsax/branch/main/graph/badge.svg" /></a></p>
+<a class="reference external" href="https://codecov.io/gh/knaaptime/sparsax/branch/main/graph/badge.svg"><img alt="codecov" src="https://codecov.io/gh/knaaptime/sparsax/branch/main/graph/badge.svg" /></a></p>
 <h1 id="sparsax">sparsax<a class="headerlink" href="#sparsax" title="Link to this heading">¶</a></h1>
-<p>JAX &amp; PyTensor -native sparse Cholesky via <a class="reference external" href="https://github.com/DrTimothyAldenDavis/SuiteSparse">CHOLMOD</a>.
-Solves with symmetric positive definite sparse matrices run at full native speed
+<p>JAX &amp; PyTensor-native sparse direct solvers backed by <a class="reference external" href="https://github.com/DrTimothyAldenDavis/SuiteSparse">SuiteSparse</a>.
+<code class="docutils literal notranslate"><span class="pre">solve</span></code>, <code class="docutils literal notranslate"><span class="pre">logdet</span></code>, and friends are <a class="reference external" href="https://docs.jax.dev/en/latest/ffi.html">XLA FFI</a> custom
+calls into <strong>CHOLMOD</strong> (Cholesky, for symmetric positive definite matrices) and <strong>KLU</strong> (LU,
+for general non-symmetric matrices), so sparse factorizations run at full native speed
 <strong>inside <code class="docutils literal notranslate"><span class="pre">&#64;jax.jit</span></code></strong> (and <code class="docutils literal notranslate"><span class="pre">lax.scan</span></code> / <code class="docutils literal notranslate"><span class="pre">lax.fori_loop</span></code>) — no Python callback overhead.</p>
 <h2 id="why">Why?<a class="headerlink" href="#why" title="Link to this heading">¶</a></h2>
+<p>No open-source JIT framework (JAX, PyTorch, TensorFlow) exposes a sparse direct factorization
+as a compilable primitive. For iterative workloads that factorize the same sparsity pattern
+many times with changing values — Gibbs samplers, MCMC for Bayesian spatial econometrics,
+shift-invert Krylov methods — paying the Python/SuiteSparse boundary on every iteration
+dominates the runtime. <code class="docutils literal notranslate"><span class="pre">sparsax</span></code> moves the whole loop to C++ behind a JIT-compiled JAX
+function, with the symbolic analysis (fill-reducing ordering + elimination tree) cached and
+reused across calls, and the numeric factorization skipped entirely when the values haven’t
+changed.</p>
+<p>Benchmarks (M-series macOS, 2D grid Laplacian, values changing every iteration): CHOLMOD via
+<code class="docutils literal notranslate"><span class="pre">sparsax</span></code> matches a hand-written scikit-sparse Python loop per iteration and is ~2.7× faster
+than <code class="docutils literal notranslate"><span class="pre">scipy.sparse.linalg.splu</span></code>, while running entirely inside <code class="docutils literal notranslate"><span class="pre">jax.jit</span></code>.</p>
+<h2 id="features">Features<a class="headerlink" href="#features" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p>No open-source JIT framework (JAX, PyTorch, TensorFlow) exposes sparse Cholesky as a
-compilable primitive; <a class="reference external" href="https://github.com/florislaporte/klujax"><code class="docutils literal notranslate"><span class="pre">klujax</span></code></a> covers sparse LU,
-which is ~2× slower than Cholesky for SPD systems.</p></li>
-<li><p>The target workload is Gibbs samplers (e.g. Bayesian spatial econometrics), where an SPD
-precision matrix is solved thousands of times with the same sparsity pattern but changing
-values, inside a JIT-compiled loop.</p></li>
-<li><p>Benchmarks (M-series macOS, 2D grid Laplacian, values changing every iteration): matches a
-hand-written scikit-sparse Python loop per iteration and is ~2.7× faster than
-<code class="docutils literal notranslate"><span class="pre">scipy.sparse.linalg.splu</span></code>, while running entirely inside <code class="docutils literal notranslate"><span class="pre">jax.jit</span></code>.</p></li>
+<li><p><strong>CHOLMOD</strong> — <code class="docutils literal notranslate"><span class="pre">solve</span></code>, <code class="docutils literal notranslate"><span class="pre">logdet</span></code>, <code class="docutils literal notranslate"><span class="pre">selinv</span></code> (selected inverse), <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code>,
+<code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code>, <code class="docutils literal notranslate"><span class="pre">update_solve</span></code> (rank-k update/downdate) for symmetric positive definite
+<code class="docutils literal notranslate"><span class="pre">A</span></code>.</p></li>
+<li><p><strong>KLU</strong> — <code class="docutils literal notranslate"><span class="pre">lu_solve</span></code>, <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code>, <code class="docutils literal notranslate"><span class="pre">lu_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">lu_solve_factor</span></code> for general
+non-symmetric <code class="docutils literal notranslate"><span class="pre">A</span></code> (e.g. <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">=</span> <span class="pre">I</span> <span class="pre">−</span> <span class="pre">ρW</span></code> with a row-standardised spatial weights matrix).</p></li>
+<li><p><strong>JIT / <code class="docutils literal notranslate"><span class="pre">lax.scan</span></code></strong>: the symbolic analysis is computed once and reused across iterations.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">vmap</span></code></strong>: <code class="docutils literal notranslate"><span class="pre">jax.vmap(solve)</span></code> lowers to a <em>single</em> native FFI call that loops over the
+batch in C++ (reusing the cached analysis), rather than XLA per-iteration dispatch.
+Composes with <code class="docutils literal notranslate"><span class="pre">grad</span></code> (<code class="docutils literal notranslate"><span class="pre">vmap(grad(solve))</span></code> batches too).</p></li>
+<li><p><strong>Autodiff</strong>: <code class="docutils literal notranslate"><span class="pre">solve</span></code> has a custom reverse-mode VJP in both <code class="docutils literal notranslate"><span class="pre">Ax</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span></code>; <code class="docutils literal notranslate"><span class="pre">logdet</span></code> has one
+in <code class="docutils literal notranslate"><span class="pre">Ax</span></code> via the selected inverse. <code class="docutils literal notranslate"><span class="pre">lu_solve</span></code> is differentiable in <code class="docutils literal notranslate"><span class="pre">Ax</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span></code> (transpose
+solve); <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code> is forward-only. Together <code class="docutils literal notranslate"><span class="pre">solve</span></code>/<code class="docutils literal notranslate"><span class="pre">logdet</span></code> give the gradient of a
+Gaussian log-density, so a precision matrix’s values can be fit by HMC/NUTS, VI, or
+empirical-Bayes optimization.</p></li>
+<li><p><strong>Factor-once primitives</strong> — <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> / <code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code> (CHOLMOD) and
+<code class="docutils literal notranslate"><span class="pre">lu_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">lu_solve_factor</span></code> (KLU) factorize once and serve an unbounded sequence of
+solves against the same factor, inside <code class="docutils literal notranslate"><span class="pre">lax.fori_loop</span></code> and under <code class="docutils literal notranslate"><span class="pre">vmap</span></code>.</p></li>
+<li><p><strong>Multiple right-hand sides</strong>: <code class="docutils literal notranslate"><span class="pre">b</span></code> may be <code class="docutils literal notranslate"><span class="pre">(n,)</span></code> or <code class="docutils literal notranslate"><span class="pre">(n,</span> <span class="pre">n_rhs)</span></code>.</p></li>
+<li><p><strong>PyMC / PyTensor</strong> frontend (optional extra) for the same CHOLMOD core, so PyMC’s default
+NUTS sampler can differentiate through the sparse solve and log-determinant without going
+through JAX/XLA.</p></li>
 </ul>
-<h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code> are <a class="reference external" href="https://docs.jax.dev/en/latest/ffi.html">XLA FFI</a> custom calls into
-CHOLMOD. The extension caches symbolic analyses (fill-reducing ordering + elimination tree)
-keyed on the sparsity pattern, so repeated calls with the same pattern only pay for the numeric
-refactorization — and calls with unchanged values skip even that, sharing one factorization
-between <code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code>. There are no handles to manage and nothing to pass through JIT
-boundaries; the caching is transparent.</p>
 <h2 id="installation">Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h2>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><code>conda<span class="w"> </span>env<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>environment.yml<span class="w">   </span><span class="c1"># suitesparse, jax, nanobind, cmake, ...</span>
 conda<span class="w"> </span>activate<span class="w"> </span>sparsax
 pip<span class="w"> </span>install<span class="w"> </span>--no-build-isolation<span class="w"> </span>.
 </code></pre></div>
 </div>
-<h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Link to this heading">¶</a></h2>
+<p>For the PyTensor / PyMC frontend:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;sparsax[pytensor]&quot;</span>
+</code></pre></div>
+</div>
+<blockquote>
+<div><p><code class="docutils literal notranslate"><span class="pre">jax.config.update(&quot;jax_enable_x64&quot;,</span> <span class="pre">True)</span></code> is required — CHOLMOD and KLU are float64.</p>
+</div></blockquote>
+<h2 id="quick-start-cholmod-symmetric-positive-definite-a">Quick start: CHOLMOD (symmetric positive definite <code class="docutils literal notranslate"><span class="pre">A</span></code>)<a class="headerlink" href="#quick-start-cholmod-symmetric-positive-definite-a" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -682,34 +682,60 @@ pip<span class="w"> </span>install<span class="w"> </span>--no-build-isolation<s
 <span class="n">Ai</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
 <span class="n">Aj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
 <span class="n">Ax</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">4.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">])</span>
-<span class="n">b</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">])</span>
+<span class="n">b</span>  <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">])</span>
 
-<span class="n">x</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>          <span class="c1"># eager</span>
-<span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>      <span class="c1"># log|A| from the same factorization</span>
+<span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>          <span class="c1"># eager</span>
+<span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>       <span class="c1"># log|A| from the same factorization</span>
+<span class="n">z</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">selinv</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>       <span class="c1"># (A^-1) on A&#39;s sparsity pattern</span>
 
-<span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>                                      <span class="c1"># ...or fully JIT-compiled</span>
+<span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">gibbs_step</span><span class="p">(</span><span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
-    <span class="n">x</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>      <span class="c1"># full CHOLMOD speed, no callbacks</span>
-    <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>  <span class="c1"># factorization shared with solve</span>
+    <span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>      <span class="c1"># full CHOLMOD speed, no callbacks</span>
+    <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>   <span class="c1"># factorization shared with solve</span>
     <span class="k">return</span> <span class="n">x</span><span class="p">,</span> <span class="n">ld</span>
 </code></pre></div>
 </div>
-<p>Features:</p>
-<ul class="simple">
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">jit</span></code> / <code class="docutils literal notranslate"><span class="pre">lax.scan</span></code></strong>: the symbolic analysis is computed once and reused across iterations.</p></li>
-<li><p><strong>Autodiff</strong>: <code class="docutils literal notranslate"><span class="pre">solve</span></code> has a custom VJP (reverse-mode) in both <code class="docutils literal notranslate"><span class="pre">Ax</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span></code>;
-<code class="docutils literal notranslate"><span class="pre">logdet</span></code> has one in <code class="docutils literal notranslate"><span class="pre">Ax</span></code> (via the selected inverse — see below). Together they
-give the gradient of a Gaussian log-density, so the precision matrix’s values
-can be fit by gradient-based inference (HMC/NUTS, empirical Bayes).</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">vmap</span></code></strong>: <code class="docutils literal notranslate"><span class="pre">jax.vmap(solve)</span></code> lowers to a <em>single</em> native FFI call that loops over the batch
-in C++ (reusing the cached analysis), rather than XLA per-iteration dispatch. Composes with
-<code class="docutils literal notranslate"><span class="pre">grad</span></code> (<code class="docutils literal notranslate"><span class="pre">vmap(grad(solve))</span></code> batches too). Map over <code class="docutils literal notranslate"><span class="pre">Ax</span></code>, <code class="docutils literal notranslate"><span class="pre">b</span></code>, or both.</p></li>
-<li><p><strong>Multiple right-hand sides</strong>: <code class="docutils literal notranslate"><span class="pre">b</span></code> may be <code class="docutils literal notranslate"><span class="pre">(n,)</span></code> or <code class="docutils literal notranslate"><span class="pre">(n,</span> <span class="pre">n_rhs)</span></code>.</p></li>
-<li><p><strong>Factor-part solves</strong>: <code class="docutils literal notranslate"><span class="pre">mode=sparsax.MODE_LT</span></code> etc. expose CHOLMOD’s solve systems
-(<code class="docutils literal notranslate"><span class="pre">P'</span> <span class="pre">L</span> <span class="pre">L'</span> <span class="pre">P</span> <span class="pre">=</span> <span class="pre">A</span></code>). Sampling <code class="docutils literal notranslate"><span class="pre">y</span> <span class="pre">~</span> <span class="pre">N(0,</span> <span class="pre">A^{-1})</span></code>:
-<code class="docutils literal notranslate"><span class="pre">y</span> <span class="pre">=</span> <span class="pre">solve(...,</span> <span class="pre">solve(...,</span> <span class="pre">z,</span> <span class="pre">mode=MODE_LT),</span> <span class="pre">mode=MODE_PT)</span></code>.</p></li>
-<li><p><strong>Not positive definite</strong> → runtime exception (the factor is always a true LL’).</p></li>
-</ul>
+<h2 id="quick-start-klu-general-non-symmetric-a">Quick start: KLU (general non-symmetric <code class="docutils literal notranslate"><span class="pre">A</span></code>)<a class="headerlink" href="#quick-start-klu-general-non-symmetric-a" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sparsax</span>
+
+<span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;jax_enable_x64&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+
+<span class="c1"># General (non-symmetric) matrix in COO form. The full matrix is used —</span>
+<span class="c1"># no upper-triangle folding. A common case is A = I - rho * W.</span>
+<span class="n">n</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="n">Ai</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<span class="n">Aj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<span class="n">Ax</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.2</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.3</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">])</span>   <span class="c1"># I - rho W, say</span>
+<span class="n">b</span>  <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">])</span>
+
+<span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">lu_solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>        <span class="c1"># eager</span>
+<span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">lu_logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>     <span class="c1"># log|det(A)| from the KLU factor</span>
+
+<span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">step</span><span class="p">(</span><span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">lu_solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>  <span class="c1"># full KLU speed in JIT</span>
+</code></pre></div>
+</div>
+<p>KLU shares the same caching story as CHOLMOD: the sparsity pattern’s fill-reducing analysis is
+computed once and cached, and under <code class="docutils literal notranslate"><span class="pre">jax.vmap</span></code> the whole batch is solved in a single native FFI
+call. <code class="docutils literal notranslate"><span class="pre">lu_solve</span></code> is differentiable in <code class="docutils literal notranslate"><span class="pre">Ax</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span></code> (transpose solve); <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code> is forward-only
+(the non-symmetric logdet gradient is the full selected inverse, which KLU does not expose —
+use <code class="docutils literal notranslate"><span class="pre">logdet</span></code> for symmetric <code class="docutils literal notranslate"><span class="pre">A</span></code> when a gradient is needed).</p>
+<h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code> (and their <code class="docutils literal notranslate"><span class="pre">lu_*</span></code> counterparts) are XLA FFI custom calls into CHOLMOD and
+KLU. The extension caches symbolic analyses keyed on the sparsity pattern, so repeated calls
+with the same pattern only pay for the numeric refactorization — and calls with unchanged
+values skip even that, sharing one factorization between <code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code>. There are no
+handles to manage and nothing to pass through JIT boundaries; the caching is transparent.</p>
+<p>For the “hold a numeric factor open” case — e.g. a shift-invert Krylov basis that reuses one
+factorization across an unbounded sequence of solves whose RHS depends on the previous solve’s
+output — <code class="docutils literal notranslate"><span class="pre">factor</span></code> / <code class="docutils literal notranslate"><span class="pre">solve_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">logdet_factor</span></code> (CHOLMOD) and <code class="docutils literal notranslate"><span class="pre">lu_factor</span></code> /
+<code class="docutils literal notranslate"><span class="pre">lu_solve_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">lu_logdet_factor</span></code> (KLU) return an opaque token carrying a strong reference
+to the numeric factor, guaranteeing reuse inside <code class="docutils literal notranslate"><span class="pre">lax.fori_loop</span></code> without relying on a host-side
+cache surviving JIT-compiled iterations.</p>
 <h2 id="factor-once-do-everything-factor-solve-sample-gaussian">Factor once, do everything: <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> / <code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code><a class="headerlink" href="#factor-once-do-everything-factor-solve-sample-gaussian" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code> are separate primitives, so a Gibbs sweep that needs a posterior mean, a
 correlated draw, and a log-determinant factors the <em>same</em> A several times — and under <code class="docutils literal notranslate"><span class="pre">vmap</span></code>
@@ -724,8 +750,8 @@ element</strong>, whatever the number of chains.</p>
 <span class="c1"># ...or spell it out with the general primitive:</span>
 <span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">w</span><span class="p">),</span> <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">factor_solve</span><span class="p">(</span>
     <span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span>
-    <span class="p">[(</span><span class="n">b</span><span class="p">,</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_A</span><span class="p">),</span>                          <span class="c1"># A^-1 b</span>
-     <span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="p">(</span><span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_LT</span><span class="p">,</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_PT</span><span class="p">))],</span>  <span class="c1"># P&#39; L^-T z  (chain)</span>
+    <span class="p">[(</span><span class="n">b</span><span class="p">,</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_A</span><span class="p">),</span>                             <span class="c1"># A^-1 b</span>
+     <span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="p">(</span><span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_LT</span><span class="p">,</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_PT</span><span class="p">))],</span>        <span class="c1"># P&#39; L^-T z  (chain)</span>
     <span class="n">want_logdet</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="n">eta</span> <span class="o">=</span> <span class="n">mean</span> <span class="o">+</span> <span class="n">w</span>
 </code></pre></div>
@@ -736,37 +762,36 @@ handy for confirming the fusion. Benchmarked Gibbs draw (mean + sample + logdet)
 batch of <em>different</em> A’s: <strong>4× fewer factorizations and ~3.3–3.6× faster</strong> than issuing the
 separate <code class="docutils literal notranslate"><span class="pre">solve</span></code>/<code class="docutils literal notranslate"><span class="pre">logdet</span></code> primitives. <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> is forward-only (no autodiff rule); use
 <code class="docutils literal notranslate"><span class="pre">solve</span></code>/<code class="docutils literal notranslate"><span class="pre">logdet</span></code> when you need gradients.</p>
+<p>The KLU analogue is <code class="docutils literal notranslate"><span class="pre">lu_factor</span></code> + <code class="docutils literal notranslate"><span class="pre">lu_solve_factor</span></code> (+ <code class="docutils literal notranslate"><span class="pre">lu_logdet_factor</span></code>): factorize once,
+then issue an unbounded sequence of solves (and a logdet) against the same LU factor inside a
+JIT-compiled loop, without re-hashing <code class="docutils literal notranslate"><span class="pre">Ax</span></code> or risking LRU eviction mid-sweep.</p>
 <h2 id="gradients-the-selected-inverse">Gradients &amp; the selected inverse<a class="headerlink" href="#gradients-the-selected-inverse" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code> are the two halves of a Gaussian log-density’s gradient, so
-a precision matrix <code class="docutils literal notranslate"><span class="pre">A(θ)</span></code> with a fixed pattern and θ-dependent values can be fit
-by gradient-based inference — HMC/NUTS (e.g. via numpyro/blackjax, or PyMC’s JAX
-sampling backend), VI, or empirical-Bayes/MAP optimization:</p>
+<p><code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code> are the two halves of a Gaussian log-density’s gradient, so a precision
+matrix <code class="docutils literal notranslate"><span class="pre">A(θ)</span></code> with a fixed pattern and θ-dependent values can be fit by gradient-based
+inference — HMC/NUTS (via numpyro/blackjax, or PyMC’s JAX sampling backend), VI, or
+empirical-Bayes/MAP optimization:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">neg_log_post</span><span class="p">(</span><span class="n">Ax</span><span class="p">):</span>                                  <span class="c1"># up to constants</span>
-    <span class="n">quad</span> <span class="o">=</span> <span class="n">b</span> <span class="o">@</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>         <span class="c1"># b&#39; A^-1 b   (solve VJP)</span>
+    <span class="n">quad</span> <span class="o">=</span> <span class="n">b</span> <span class="o">@</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>            <span class="c1"># b&#39; A^-1 b   (solve VJP)</span>
     <span class="k">return</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">quad</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>   <span class="c1"># log|A| (logdet VJP)</span>
 
 <span class="n">grad_Ax</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">grad</span><span class="p">(</span><span class="n">neg_log_post</span><span class="p">)(</span><span class="n">Ax</span><span class="p">)</span>                   <span class="c1"># works under jit / vmap</span>
 </code></pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">logdet</span></code>’s reverse-mode rule uses that <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">log|A|</span> <span class="pre">/</span> <span class="pre">dA</span> <span class="pre">=</span> <span class="pre">A^{-1}</span></code>, evaluated <strong>only
-at <code class="docutils literal notranslate"><span class="pre">A</span></code>’s sparsity pattern</strong> by Takahashi’s selected-inversion
-recurrence over the Cholesky factor —
+<p><code class="docutils literal notranslate"><span class="pre">logdet</span></code>’s reverse-mode rule uses that <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">log|A|</span> <span class="pre">/</span> <span class="pre">dA</span> <span class="pre">=</span> <span class="pre">A^{-1}</span></code>, evaluated <strong>only at <code class="docutils literal notranslate"><span class="pre">A</span></code>’s
+sparsity pattern</strong> by Takahashi’s selected-inversion recurrence over the Cholesky factor —
 never the dense inverse. That quantity is exposed directly:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="n">z</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">selinv</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>   <span class="c1"># z[k] == (A^-1)[Ai[k], Aj[k]]</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="n">z</span>   <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">selinv</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>   <span class="c1"># z[k] == (A^-1)[Ai[k], Aj[k]]</span>
 <span class="n">var</span> <span class="o">=</span> <span class="n">z</span><span class="p">[</span><span class="n">Ai</span> <span class="o">==</span> <span class="n">Aj</span><span class="p">]</span>                      <span class="c1"># diag(A^-1): Gaussian marginal variances</span>
 </code></pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">selinv</span></code> shares the factorization cache, is JIT-compilable and <code class="docutils literal notranslate"><span class="pre">vmap</span></code>-able, and
-costs one selected-inversion pass over the factor (<code class="docutils literal notranslate"><span class="pre">O(nnz(L))</span></code>-ish), not <code class="docutils literal notranslate"><span class="pre">n</span></code>
-solves. <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> / <code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code> remain forward-only.</p>
+<p><code class="docutils literal notranslate"><span class="pre">selinv</span></code> shares the factorization cache, is JIT-compilable and <code class="docutils literal notranslate"><span class="pre">vmap</span></code>-able, and costs one
+selected-inversion pass over the factor (<code class="docutils literal notranslate"><span class="pre">O(nnz(L))</span></code>-ish), not <code class="docutils literal notranslate"><span class="pre">n</span></code> solves. <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> /
+<code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code> remain forward-only. <code class="docutils literal notranslate"><span class="pre">lu_solve</span></code> carries the analogous reverse-mode rule (a
+transpose solve for the VJP); <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code> is not differentiable.</p>
 <h2 id="pymc-pytensor-nuts">PyMC / PyTensor (NUTS)<a class="headerlink" href="#pymc-pytensor-nuts" title="Link to this heading">¶</a></h2>
-<p>The same CHOLMOD core is exposed as a <strong>PyTensor</strong> frontend for PyMC’s default
-backend, so gradient-based samplers (NUTS) can differentiate through the sparse
-solve and log-determinant without going through JAX/XLA. It’s an optional extra —
-the base package stays JAX-only:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;sparsax[pytensor]&quot;</span>
-</code></pre></div>
-</div>
+<p>The same CHOLMOD core is exposed as a <strong>PyTensor</strong> frontend for PyMC’s default backend, so
+gradient-based samplers (NUTS) can differentiate through the sparse solve and log-determinant
+without going through JAX/XLA. It’s an optional extra — the base package stays JAX-only:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pytensor.tensor</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pt</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">sparsax.pytensor</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">cjpt</span>
 
@@ -776,85 +801,35 @@ the base package stays JAX-only:</p>
 <span class="n">g</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">grad</span><span class="p">(</span><span class="n">logp</span><span class="p">,</span> <span class="n">Ax</span><span class="p">)</span>                 <span class="c1"># solve VJP + logdet (selected-inverse) VJP</span>
 </code></pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">cjpt.solve</span></code>, <code class="docutils literal notranslate"><span class="pre">cjpt.logdet</span></code>, and <code class="docutils literal notranslate"><span class="pre">cjpt.selinv</span></code> mirror the JAX functions and carry
-the same reverse-mode rules (<code class="docutils literal notranslate"><span class="pre">solve</span></code> in <code class="docutils literal notranslate"><span class="pre">Ax</span></code>/<code class="docutils literal notranslate"><span class="pre">b</span></code>, <code class="docutils literal notranslate"><span class="pre">logdet</span></code> in <code class="docutils literal notranslate"><span class="pre">Ax</span></code>); the pattern
-<code class="docutils literal notranslate"><span class="pre">(Ai,</span> <span class="pre">Aj)</span></code> is non-differentiable data. On PyTensor ≥ 3.1 the gradient routes
-through <code class="docutils literal notranslate"><span class="pre">Op.pullback</span></code>; older versions use <code class="docutils literal notranslate"><span class="pre">grad</span></code>.</p>
-<h3 id="use-the-c-backend-not-numba">Use the C backend, not numba<a class="headerlink" href="#use-the-c-backend-not-numba" title="Link to this heading">¶</a></h3>
-<p>These Ops implement a pure-Python <code class="docutils literal notranslate"><span class="pre">perform</span></code> (it calls the native core, which
-holds no GIL and does the real work — the CHOLMOD call dominates). PyTensor’s
-<strong>C backend</strong> (<code class="docutils literal notranslate"><span class="pre">FAST_RUN</span></code>, the default) calls that <code class="docutils literal notranslate"><span class="pre">perform</span></code> directly with no
-penalty. PyTensor’s <strong>numba backend</strong> cannot JIT a Python <code class="docutils literal notranslate"><span class="pre">perform</span></code>, so it falls
-back to <em>object mode</em> and prints a <code class="docutils literal notranslate"><span class="pre">UserWarning</span></code> on every call — functionally
-correct but with per-call overhead. Prefer the C backend:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pytensor</span>
-
-<span class="n">pytensor</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">mode</span> <span class="o">=</span> <span class="s2">&quot;FAST_RUN&quot;</span>     <span class="c1"># C backend (default); avoids numba object mode</span>
-<span class="c1"># For PyMC, this is the default; if you sample through the numba/JAX linker</span>
-<span class="c1"># instead, drive NUTS via the JAX frontend (numpyro/blackjax) rather than these Ops.</span>
-</code></pre></div>
-</div>
-<p>Concretely: keep PyMC on its default sampler (C backend) to use these Ops, and
-switch to the JAX frontend above if you deliberately run PyMC’s JAX/numba linker.</p>
+<p><code class="docutils literal notranslate"><span class="pre">cjpt.solve</span></code>, <code class="docutils literal notranslate"><span class="pre">cjpt.logdet</span></code>, and <code class="docutils literal notranslate"><span class="pre">cjpt.selinv</span></code> mirror the JAX functions and carry the same
+reverse-mode rules (<code class="docutils literal notranslate"><span class="pre">solve</span></code> in <code class="docutils literal notranslate"><span class="pre">Ax</span></code>/<code class="docutils literal notranslate"><span class="pre">b</span></code>, <code class="docutils literal notranslate"><span class="pre">logdet</span></code> in <code class="docutils literal notranslate"><span class="pre">Ax</span></code>); the pattern <code class="docutils literal notranslate"><span class="pre">(Ai,</span> <span class="pre">Aj)</span></code> is
+non-differentiable data. On PyTensor ≥ 3.1 the gradient routes through <code class="docutils literal notranslate"><span class="pre">Op.pullback</span></code>; older
+versions use <code class="docutils literal notranslate"><span class="pre">grad</span></code>.</p>
+<blockquote>
+<div><p><strong>Prefer the C backend, not numba.</strong> These Ops implement a pure-Python <code class="docutils literal notranslate"><span class="pre">perform</span></code> (it calls
+the native core, which holds no GIL and does the real work — the CHOLMOD call dominates).
+PyTensor’s <strong>C backend</strong> (<code class="docutils literal notranslate"><span class="pre">FAST_RUN</span></code>, the default) calls that <code class="docutils literal notranslate"><span class="pre">perform</span></code> directly with no
+penalty. PyTensor’s <strong>numba backend</strong> cannot JIT a Python <code class="docutils literal notranslate"><span class="pre">perform</span></code>, so it falls back to
+<em>object mode</em> and prints a <code class="docutils literal notranslate"><span class="pre">UserWarning</span></code> on every call — functionally correct but with
+per-call overhead. Keep PyMC on its default sampler (C backend) to use these Ops, and switch
+to the JAX frontend above if you deliberately run PyMC’s JAX/numba linker.</p>
+</div></blockquote>
 <h2 id="jax-sparse-bcoo">JAX sparse (<code class="docutils literal notranslate"><span class="pre">BCOO</span></code>)<a class="headerlink" href="#jax-sparse-bcoo" title="Link to this heading">¶</a></h2>
 <p>JAX’s native sparse type is <code class="docutils literal notranslate"><span class="pre">jax.experimental.sparse.BCOO</span></code>, whose <code class="docutils literal notranslate"><span class="pre">.indices</span></code> is <code class="docutils literal notranslate"><span class="pre">(nnz,</span> <span class="pre">2)</span></code> and
-<code class="docutils literal notranslate"><span class="pre">.data</span></code> is <code class="docutils literal notranslate"><span class="pre">(nnz,)</span></code>. Convenience wrappers accept one directly:</p>
+<code class="docutils literal notranslate"><span class="pre">.data</span></code> is <code class="docutils literal notranslate"><span class="pre">(nnz,)</span></code>. Convenience wrappers accept one directly (CHOLMOD and KLU alike):</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">jax.experimental</span><span class="w"> </span><span class="kn">import</span> <span class="n">sparse</span> <span class="k">as</span> <span class="n">jsparse</span>
 <span class="n">A</span> <span class="o">=</span> <span class="n">jsparse</span><span class="o">.</span><span class="n">BCOO</span><span class="o">.</span><span class="n">fromdense</span><span class="p">(</span><span class="n">A_dense</span><span class="p">)</span>         <span class="c1"># or build however you like</span>
 
-<span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>            <span class="c1"># == solve(A.indices[:,0], A.indices[:,1], A.data, b)</span>
+<span class="c1"># CHOLMOD</span>
+<span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
 <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">logdet_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
-<span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">update_solve_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>  <span class="c1"># rank-k update, as below</span>
+<span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">update_solve_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">C</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>     <span class="c1"># rank-k update/downdate</span>
+
+<span class="c1"># KLU</span>
+<span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">lu_solve_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+<span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">lu_logdet_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
 </code></pre></div>
 </div>
-<p>The analysis-reuse speedup is unaffected: the pattern cache keys on the concrete index values
-(exactly a BCOO’s <code class="docutils literal notranslate"><span class="pre">.indices</span></code>), so a stable pattern across <code class="docutils literal notranslate"><span class="pre">jit</span></code>/<code class="docutils literal notranslate"><span class="pre">vmap</span></code> calls keeps hitting the
-cache. A full-symmetric BCOO works directly (only the upper triangle is read), and
-unsorted/duplicate entries are handled. Only a plain 2D BCOO (<code class="docutils literal notranslate"><span class="pre">n_batch=0</span></code>, <code class="docutils literal notranslate"><span class="pre">n_dense=0</span></code>) is
-supported.</p>
-<h2 id="rank-k-update-downdate">Rank-k update / downdate<a class="headerlink" href="#rank-k-update-downdate" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">update_solve</span></code> solves <code class="docutils literal notranslate"><span class="pre">(A</span> <span class="pre">±</span> <span class="pre">C</span> <span class="pre">C')</span> <span class="pre">x</span> <span class="pre">=</span> <span class="pre">b</span></code> by applying CHOLMOD’s <code class="docutils literal notranslate"><span class="pre">cholmod_updown</span></code> to a working
-copy of <code class="docutils literal notranslate"><span class="pre">A</span></code>’s cached factor, instead of refactoring the modified matrix from scratch. <code class="docutils literal notranslate"><span class="pre">A</span></code> is
-factored once; each call is <code class="docutils literal notranslate"><span class="pre">O(k</span> <span class="pre">·</span> <span class="pre">path)</span></code> where <code class="docutils literal notranslate"><span class="pre">path</span></code> is the elimination-tree path touched by
-<code class="docutils literal notranslate"><span class="pre">C</span></code>’s nonzeros.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="c1"># Add an observation (rank-1, sparse update column) and re-solve, cheaply:</span>
-<span class="n">x</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">update_solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>                 <span class="c1"># (A + c c&#39;) x = b</span>
-<span class="n">x</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">update_solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">downdate</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># (A - c c&#39;) x = b</span>
-<span class="n">x</span><span class="p">,</span> <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">update_solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">C</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">return_logdet</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># C is (n, k)</span>
-</code></pre></div>
-</div>
-<p><strong>When it pays off:</strong> the update column(s) <code class="docutils literal notranslate"><span class="pre">C</span></code> must be <strong>sparse</strong> (a few nonzeros — e.g. one
-data point and its neighbors). On the grid-Laplacian benchmark a rank-1 sparse update is ~3×
-faster than a full factorize+solve. A <em>dense</em> <code class="docutils literal notranslate"><span class="pre">C</span></code> walks the whole tree and is slower than
-refactoring — use plain <code class="docutils literal notranslate"><span class="pre">solve</span></code> on the reassembled matrix in that case. The base cached factor
-is never mutated, so <code class="docutils literal notranslate"><span class="pre">update_solve</span></code> is a pure function (works under <code class="docutils literal notranslate"><span class="pre">jit</span></code>; not differentiable).</p>
-<h2 id="options">Options<a class="headerlink" href="#options" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="n">sparsax</span><span class="o">.</span><span class="n">set_options</span><span class="p">(</span><span class="n">supernodal</span><span class="o">=</span><span class="s2">&quot;simplicial&quot;</span><span class="p">)</span>  <span class="c1"># or &quot;auto&quot; (default), &quot;supernodal&quot;</span>
-<span class="n">sparsax</span><span class="o">.</span><span class="n">clear_cache</span><span class="p">()</span>                         <span class="c1"># free cached factorizations</span>
-</code></pre></div>
-</div>
-<p>For very sparse matrices (e.g. planar/grid graphs), <code class="docutils literal notranslate"><span class="pre">&quot;simplicial&quot;</span></code> often gives faster
-triangular solves; <code class="docutils literal notranslate"><span class="pre">&quot;supernodal&quot;</span></code> (BLAS-based) wins on denser problems. <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> lets
-CHOLMOD choose based on the matrix.</p>
-<h2 id="status-roadmap">Status / roadmap<a class="headerlink" href="#status-roadmap" title="Link to this heading">¶</a></h2>
-<ul class="simple">
-<li><p>[x] <code class="docutils literal notranslate"><span class="pre">solve</span></code> (all CHOLMOD solve modes), <code class="docutils literal notranslate"><span class="pre">logdet</span></code>, symbolic + numeric caching, custom VJP,
-multi-RHS, tests, benchmarks</p></li>
-<li><p>[x] Native batching: <code class="docutils literal notranslate"><span class="pre">jax.vmap(solve)</span></code> → one FFI call looping over the batch in C++</p></li>
-<li><p>[x] <code class="docutils literal notranslate"><span class="pre">cholmod_updown</span></code> rank-k update/downdate (<code class="docutils literal notranslate"><span class="pre">update_solve</span></code>)</p></li>
-<li><p>[x] Cache the simplicial LDL’ base factor for updown (rebuilt only on refactor), so the
-LL’→LDL’ conversion is paid once per base change, not once per call</p></li>
-<li><p>[x] <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> / <code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code>: factor once, serve many solve chains + logdet from
-one factor; fuses under <code class="docutils literal notranslate"><span class="pre">vmap</span></code> to one factorization per batch element</p></li>
-<li><p>[x] Differentiable <code class="docutils literal notranslate"><span class="pre">logdet</span></code> (reverse-mode in <code class="docutils literal notranslate"><span class="pre">Ax</span></code>) and the <code class="docutils literal notranslate"><span class="pre">selinv</span></code> selected inverse
-(Takahashi recurrence over the factor); pairs with <code class="docutils literal notranslate"><span class="pre">solve</span></code>’s VJP for full
-Gaussian log-density gradients</p></li>
-<li><p>[x] PyTensor frontend (<code class="docutils literal notranslate"><span class="pre">sparsax.pytensor</span></code>, optional extra) with matching autodiff,
-for PyMC’s default backend / NUTS — a second frontend over the same CHOLMOD core</p></li>
-<li><p>[ ] float32 (CHOLMOD 5 single precision) and int64 indices</p></li>
-<li><p>[ ] Autodiff rule for <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> (currently forward-only)</p></li>
-<li><p>[ ] Wheels / conda-forge packaging</p></li>
-</ul>
 <div class="toctree-wrapper compound">
 </div>
 <div class="toctree-wrapper compound">
