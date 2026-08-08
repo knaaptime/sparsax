@@ -49,7 +49,7 @@ import numpy as np
 
 import sparsax_cpp as _cpp
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 __all__ = [
     "solve",
     "logdet",
@@ -206,10 +206,40 @@ def _solve_batched(Ai, Aj, Ax, b, mode):
     return call(Ai, Aj, Ax, b, mode=np.int64(mode))
 
 
+def _share_pattern(Ai, Aj, Ai_batched, Aj_batched):
+    """Collapse a batched-but-uniform COO pattern back to a single pattern.
+
+    The sparsity pattern is shared across a vmap batch by contract — only the
+    values ``Ax`` and the right-hand sides may vary. Callers therefore normally
+    pass ``Ai``/``Aj`` as unbatched constants and these rules leave them alone.
+
+    They can nevertheless *arrive* batched: batching a ``lax.cond`` or
+    ``lax.scan`` lifts everything the branch/body closes over into the batch,
+    including loop-invariant constants. So a perfectly ordinary
+
+        jax.vmap(lambda ...: lax.cond(p, lambda _: solve(Ai, Aj, Ax, b), ...))
+
+    hands this rule a ``[B, n_nz]`` pattern whose rows are all identical. Before
+    this was handled, that surfaced as a confusing downstream failure — a shape
+    mismatch inside the FFI, or an outright "cannot vmap over the sparsity
+    pattern" error — for code that never asked to vary the pattern at all.
+
+    Since a batched pattern can only be a broadcast of one pattern under the
+    contract, take row 0. Genuinely per-element patterns remain unsupported (the
+    factorization cache and the batched FFI handlers are both built around one
+    shared symbolic analysis); passing them silently uses the first.
+    """
+    if Ai_batched:
+        Ai = Ai[0]
+    if Aj_batched:
+        Aj = Aj[0]
+    return Ai, Aj
+
+
 # One custom_vmap-wrapped dispatcher per solve mode: an ordinary (unbatched)
 # FFI call normally, but under vmap it routes to the batched handler so the
 # batch loop runs in C++ instead of as XLA per-iteration dispatch. Ai/Aj are
-# never mapped (the pattern is shared), so they are not broadcast.
+# shared across the batch (see _share_pattern), so they are not broadcast.
 _DISPATCH = {}
 
 
@@ -223,7 +253,8 @@ def _make_solve_dispatch(mode):
 
     @dispatch.def_vmap
     def _dispatch_vmap(axis_size, in_batched, Ai, Aj, Ax, b):
-        _, _, Ax_batched, b_batched = in_batched
+        Ai_batched, Aj_batched, Ax_batched, b_batched = in_batched
+        Ai, Aj = _share_pattern(Ai, Aj, Ai_batched, Aj_batched)
         if not Ax_batched:
             Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
         if not b_batched:
@@ -342,7 +373,8 @@ def _make_lu_dispatch(trans):
 
     @dispatch.def_vmap
     def _dispatch_vmap(axis_size, in_batched, Ai, Aj, Ax, b):
-        _, _, Ax_batched, b_batched = in_batched
+        Ai_batched, Aj_batched, Ax_batched, b_batched = in_batched
+        Ai, Aj = _share_pattern(Ai, Aj, Ai_batched, Aj_batched)
         if not Ax_batched:
             Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
         if not b_batched:
@@ -800,11 +832,7 @@ def _make_factor_solve_dispatch(mode_chain, chain_lens, want_logdet, n):
     @dispatch.def_vmap
     def _rule(axis_size, in_batched, Ai, Aj, Ax, bs):
         Ai_b, Aj_b, Ax_b, bs_b = in_batched
-        if Ai_b or Aj_b:
-            raise ValueError(
-                "sparsax.factor_solve: cannot vmap over the sparsity "
-                "pattern (Ai, Aj) — it must be shared across the batch"
-            )
+        Ai, Aj = _share_pattern(Ai, Aj, Ai_b, Aj_b)
         if not Ax_b:
             Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
         bs = tuple(

@@ -410,15 +410,49 @@ class TestFactorSolve:
         hlo = f.lower(bs).compile().as_text()
         assert hlo.count("sparsax_factor_solve_batched_f64") == 1
 
-    def test_vmap_over_pattern_raises(self, spd):
+    def test_vmap_over_broadcast_pattern_is_accepted(self, spd):
+        """A batched-but-uniform pattern is collapsed, not rejected.
+
+        Batching a ``lax.cond``/``lax.scan`` lifts the constants its
+        branch closes over into the batch, so ``Ai``/``Aj`` can arrive with a
+        leading axis whose rows are all identical even though the caller never
+        asked to vary the pattern.  That must behave exactly like the
+        unbatched call rather than failing.
+        """
         Ai, Aj, Ax, A = spd
         n = A.shape[0]
         Ais = np.broadcast_to(Ai, (3,) + Ai.shape)
         b = np.ones(n)
-        with pytest.raises(ValueError, match="sparsity pattern"):
-            jax.vmap(
-                lambda Ai: sparsax.factor_solve(Ai, Aj, Ax, [(b, sparsax.MODE_A)])[0]
-            )(Ais)
+        got = jax.vmap(
+            lambda Ai_: sparsax.factor_solve(Ai_, Aj, Ax, [(b, sparsax.MODE_A)])[0]
+        )(Ais)
+        want = sparsax.factor_solve(Ai, Aj, Ax, [(b, sparsax.MODE_A)])[0]
+        assert got.shape == (3, n)
+        for i in range(3):
+            np.testing.assert_allclose(got[i], want, rtol=1e-12, atol=1e-12)
+
+    def test_solve_inside_vmapped_cond(self, spd):
+        """The case the collapse exists for: a solve under a batched cond.
+
+        ``vmap`` of ``cond`` lowers to ``select`` and batches everything the
+        branches close over — including the pattern.
+        """
+        Ai, Aj, Ax, A = spd
+        n = A.shape[0]
+        bs = np.asarray(np.random.default_rng(0).standard_normal((3, n)))
+        preds = np.asarray([True, False, True])
+
+        def f(pred, b):
+            return jax.lax.cond(
+                pred,
+                lambda _: sparsax.solve(Ai, Aj, Ax, b),
+                lambda _: sparsax.lu_solve(Ai, Aj, Ax, b),
+                operand=None,
+            )
+
+        got = jax.jit(jax.vmap(f))(preds, bs)
+        for i in range(3):
+            np.testing.assert_allclose(A @ np.asarray(got[i]), bs[i], atol=1e-8)
 
 
 class TestSampleGaussian:

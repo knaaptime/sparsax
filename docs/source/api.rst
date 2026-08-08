@@ -35,6 +35,26 @@ pay for the numeric refactorization.
    cache_size
    factorization_count
 
+Factor tokens (hold a numeric factor open)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Factor SPD ``A`` once, then issue an unbounded sequence of solves + a logdet
+against the held factor without re-hashing ``Ax`` or refactoring. This is the
+"hold the factor open" primitive that :func:`factor_solve` (which fuses a
+*fixed* set of solves into one call) cannot express: a recurrence
+``V_{j+1} = A^{-1}(G V_j)`` (a shift-invert Krylov basis) needs the previous
+solve's output as the next solve's input. Forward-only (no autodiff); use
+:func:`solve` / :func:`logdet` when gradients are needed.
+
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   factor
+   solve_factor
+   logdet_factor
+   set_num_cache_size
+
 Sparse LU (KLU)
 ~~~~~~~~~~~~~~~
 
@@ -47,6 +67,25 @@ Sparse LU solver for general (non-symmetric) matrices, e.g.
 
    lu_solve
    lu_solve_bcoo
+   lu_logdet
+   lu_logdet_bcoo
+
+KLU factor tokens
+~~~~~~~~~~~~~~~~~
+
+The non-symmetric analogue of the CHOLMOD factor tokens: factor general ``A``
+once via KLU, then issue an unbounded sequence of solves (``A x = b`` or
+``A^T x = b``) and a logdet against the held factor. The token holds a strong
+reference to the numeric factor, so the per-pattern LRU cannot evict it while
+the token is live. Forward-only (no autodiff).
+
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   lu_factor
+   lu_solve_factor
+   lu_logdet_factor
    set_lu_cache_size
 
 Solve modes
