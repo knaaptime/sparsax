@@ -821,12 +821,60 @@
   
   
     <li class="md-nav__item">
+      <a href="../api.html#factor-tokens-hold-a-numeric-factor-open" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>Factor tokens <wbr>(hold a numeric factor open)</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api.html#sparse-lu-klu" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     <span>Sparse LU <wbr>(KLU)</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api.html#klu-factor-tokens" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>KLU factor tokens</span>
     
   </span>
   
@@ -1046,7 +1094,7 @@
 <h1 id="sparsax-solve-bcoo">sparsax.solve_bcoo<a class="headerlink" href="#sparsax-solve-bcoo" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.solve_bcoo">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">solve_bcoo</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve_bcoo" title="sparsax.solve_bcoo.A (Python parameter)"><span class="n"><span class="pre">A</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve_bcoo" title="sparsax.solve_bcoo.b (Python parameter)"><span class="n"><span class="pre">b</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve_bcoo" title="sparsax.solve_bcoo.mode (Python parameter)"><span class="n"><span class="pre">mode</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="mi">0</span></code></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.8.0/sparsax/__init__.py#L1206-L1216"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.solve_bcoo" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">solve_bcoo</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve_bcoo" title="sparsax.solve_bcoo.A (Python parameter)"><span class="n"><span class="pre">A</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve_bcoo" title="sparsax.solve_bcoo.b (Python parameter)"><span class="n"><span class="pre">b</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve_bcoo" title="sparsax.solve_bcoo.mode (Python parameter)"><span class="n"><span class="pre">mode</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="mi">0</span></code></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L1234-L1244"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.solve_bcoo" title="Link to this definition">¶</a></dt>
 <dd><p><a class="reference internal" href="sparsax.solve.html#sparsax.solve" title="sparsax.solve (Python function) — Solve A x = b for symmetric positive definite sparse A."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve()</span></code></a> for a JAX <code class="docutils literal notranslate"><span class="pre">BCOO</span></code> matrix <code class="docutils literal notranslate"><span class="pre">A</span></code>.</p>
 <p>Equivalent to <code class="docutils literal notranslate"><span class="pre">solve(A.indices[:,</span> <span class="pre">0],</span> <span class="pre">A.indices[:,</span> <span class="pre">1],</span> <span class="pre">A.data,</span> <span class="pre">b,</span> <span class="pre">...)</span></code>.
 A full-symmetric BCOO works directly — only the upper triangle is read —

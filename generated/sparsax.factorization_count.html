@@ -14,7 +14,7 @@
         <link rel="prev" href="sparsax.cache_size.html">
       
       
-        <link rel="next" href="sparsax.lu_solve.html">
+        <link rel="next" href="sparsax.factor.html">
       
       
       <link rel="icon" href="">
@@ -821,12 +821,60 @@
   
   
     <li class="md-nav__item">
+      <a href="../api.html#factor-tokens-hold-a-numeric-factor-open" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>Factor tokens <wbr>(hold a numeric factor open)</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api.html#sparse-lu-klu" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     <span>Sparse LU <wbr>(KLU)</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api.html#klu-factor-tokens" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>KLU factor tokens</span>
     
   </span>
   
@@ -1046,7 +1094,7 @@
 <h1 id="sparsax-factorization-count">sparsax.factorization_count<a class="headerlink" href="#sparsax-factorization-count" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.factorization_count">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">factorization_count</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.8.0/sparsax/__init__.py#L1267-L1274"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.factorization_count" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">factorization_count</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L1295-L1302"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.factorization_count" title="Link to this definition">¶</a></dt>
 <dd><p>Total numeric (re)factorizations performed since import.</p>
 <p>Bumped only on a real factorization, not on the value-cache skip. Useful
 for confirming that a fused <a class="reference internal" href="sparsax.factor_solve.html#sparsax.factor_solve" title="sparsax.factor_solve (Python function) — Factor A once, then run several solve chains from that one factor."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor_solve()</span></code></a> / <a class="reference internal" href="sparsax.sample_gaussian.html#sparsax.sample_gaussian" title="sparsax.sample_gaussian (Python function) — Draw eta ~ N(A^{-1} b, A^{-1}) from a single factorization of A."><code class="xref py py-func docutils literal notranslate"><span class="pre">sample_gaussian()</span></code></a>

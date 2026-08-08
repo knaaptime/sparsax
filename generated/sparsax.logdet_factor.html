@@ -11,17 +11,17 @@
       
       
       
-        <link rel="prev" href="sparsax.factor_solve.html">
+        <link rel="prev" href="sparsax.solve_factor.html">
       
       
-        <link rel="next" href="sparsax.update_solve.html">
+        <link rel="next" href="sparsax.set_num_cache_size.html">
       
       
       <link rel="icon" href="">
     
     
       
-        <title>sparsax.sample_gaussian - sparsax</title>
+        <title>sparsax.logdet_factor - sparsax</title>
       
     
     
@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#sparsax.sample_gaussian" class="md-skip">
+        <a href="#sparsax.logdet_factor" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              sparsax.sample_gaussian
+              sparsax.logdet_factor
             
           </span>
         </div>
@@ -550,31 +550,11 @@
                 
   
   
-    
-  
-    
   
   
   
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    <span>sparsax.<wbr>sample_<wbr>gaussian</span>
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="#" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="sparsax.sample_gaussian.html" class="md-nav__link">
         
   
   
@@ -585,141 +565,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary">
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian" class="md-nav__link">
-    
-      <span aria-label="Python function" class="objinfo-icon objinfo-icon__procedure" title="Python function">F</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian (Python function) — Draw eta ~ N(A^{-1} b, A^{-1}) from a single factorization of A."><span>sparsax.<wbr>sample_<wbr>gaussian</span></span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="sparsax.sample_gaussian">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian-parameters" class="md-nav__link">
-    
-    <span class="md-ellipsis">
-      <span>Parameters</span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Parameters">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian.Ai" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian.Ai (Python parameter) — COO of the SPD precision matrix A."><span>Ai</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian.Aj" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian.Aj (Python parameter) — COO of the SPD precision matrix A."><span>Aj</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian.Ax" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian.Ax (Python parameter) — COO of the SPD precision matrix A."><span>Ax</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian.b" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian.b (Python parameter) — [n] or [n, n_rhs] — mean numerator (posterior mean is A^{-1} b)."><span>b</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian.z" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian.z (Python parameter) — standard-normal draw with the same shape as b."><span>z</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian.want_logdet" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian.want_logdet (Python parameter) — if True, also return log|A|."><span>want_<wbr>logdet</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian-returns" class="md-nav__link">
-    
-    <span class="md-ellipsis">
-      <span>Returns</span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -921,12 +766,25 @@
                 
   
   
+    
   
   
   
-    <li class="md-nav__item">
-      <a href="../api.html#factor-tokens-hold-a-numeric-factor-open" class="md-nav__link">
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
         
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_1_1_14" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../api.html#factor-tokens-hold-a-numeric-factor-open" class="md-nav__link ">
+              
   
   
   <span class="md-ellipsis">
@@ -935,8 +793,218 @@
   </span>
   
 
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_1_1_14" id="__nav_3_1_1_14_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_3_1_1_14_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_1_1_14">
+            <span class="md-nav__icon md-icon"></span>
+            <span>Factor tokens <wbr>(hold a numeric factor open)</span>
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.factor.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>factor</span>
+    
+  </span>
+  
+
       </a>
     </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.solve_factor.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>solve_<wbr>factor</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>logdet_<wbr>factor</span>
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="#" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>logdet_<wbr>factor</span>
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary">
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sparsax.logdet_factor" class="md-nav__link">
+    
+      <span aria-label="Python function" class="objinfo-icon objinfo-icon__procedure" title="Python function">F</span>
+    
+    <span class="md-ellipsis">
+      <span title="sparsax.logdet_factor (Python function) — Return log|A| from a pre-computed factor (no refactor)."><span>sparsax.<wbr>logdet_<wbr>factor</span></span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="sparsax.logdet_factor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sparsax.logdet_factor-parameters" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Parameters</span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sparsax.logdet_factor.token" class="md-nav__link">
+    
+      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
+    
+    <span class="md-ellipsis">
+      <span title="sparsax.logdet_factor.token (Python parameter) — Factor from factor()."><span>token</span></span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sparsax.logdet_factor-returns" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Returns</span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.set_num_cache_size.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>set_<wbr>num_<wbr>cache_<wbr>size</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
   
 
               
@@ -1160,20 +1228,20 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian" class="md-nav__link">
+  <a href="#sparsax.logdet_factor" class="md-nav__link">
     
       <span aria-label="Python function" class="objinfo-icon objinfo-icon__procedure" title="Python function">F</span>
     
     <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian (Python function) — Draw eta ~ N(A^{-1} b, A^{-1}) from a single factorization of A."><span>sparsax.<wbr>sample_<wbr>gaussian</span></span>
+      <span title="sparsax.logdet_factor (Python function) — Return log|A| from a pre-computed factor (no refactor)."><span>sparsax.<wbr>logdet_<wbr>factor</span></span>
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="sparsax.sample_gaussian">
+    <nav class="md-nav" aria-label="sparsax.logdet_factor">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian-parameters" class="md-nav__link">
+  <a href="#sparsax.logdet_factor-parameters" class="md-nav__link">
     
     <span class="md-ellipsis">
       <span>Parameters</span>
@@ -1184,72 +1252,12 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian.Ai" class="md-nav__link">
+  <a href="#sparsax.logdet_factor.token" class="md-nav__link">
     
       <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
     
     <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian.Ai (Python parameter) — COO of the SPD precision matrix A."><span>Ai</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian.Aj" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian.Aj (Python parameter) — COO of the SPD precision matrix A."><span>Aj</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian.Ax" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian.Ax (Python parameter) — COO of the SPD precision matrix A."><span>Ax</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian.b" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian.b (Python parameter) — [n] or [n, n_rhs] — mean numerator (posterior mean is A^{-1} b)."><span>b</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian.z" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian.z (Python parameter) — standard-normal draw with the same shape as b."><span>z</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian.want_logdet" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.sample_gaussian.want_logdet (Python parameter) — if True, also return log|A|."><span>want_<wbr>logdet</span></span>
+      <span title="sparsax.logdet_factor.token (Python parameter) — Factor from factor()."><span>token</span></span>
     </span>
   </a>
   
@@ -1261,7 +1269,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#sparsax.sample_gaussian-returns" class="md-nav__link">
+  <a href="#sparsax.logdet_factor-returns" class="md-nav__link">
     
     <span class="md-ellipsis">
       <span>Returns</span>
@@ -1292,45 +1300,37 @@
 
 
   
-    <a href="https://github.com/knaaptime/sparsax/blob/main/docs/generated/sparsax.sample_gaussian.rst" title="Edit this page" class="md-content__button md-icon">
+    <a href="https://github.com/knaaptime/sparsax/blob/main/docs/generated/sparsax.logdet_factor.rst" title="Edit this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 9h5.5L13 3.5zM6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4c0-1.11.89-2 2-2m.12 13.5 3.74 3.74 1.42-1.41-2.33-2.33 2.33-2.33-1.42-1.41zm11.16 0-3.74-3.74-1.42 1.41 2.33 2.33-2.33 2.33 1.42 1.41z"/></svg>
     </a>
   
   
 
-<h1 id="sparsax-sample-gaussian">sparsax.sample_gaussian<a class="headerlink" href="#sparsax-sample-gaussian" title="Link to this heading">¶</a></h1>
+<h1 id="sparsax-logdet-factor">sparsax.logdet_factor<a class="headerlink" href="#sparsax-logdet-factor" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
-<dt class="sig sig-object highlight py" id="sparsax.sample_gaussian">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">sample_gaussian</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.sample_gaussian.Ai" title="sparsax.sample_gaussian.Ai (Python parameter) — COO of the SPD precision matrix A."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.sample_gaussian.Aj" title="sparsax.sample_gaussian.Aj (Python parameter) — COO of the SPD precision matrix A."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.sample_gaussian.Ax" title="sparsax.sample_gaussian.Ax (Python parameter) — COO of the SPD precision matrix A."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.sample_gaussian.b" title="sparsax.sample_gaussian.b (Python parameter) — [n] or [n, n_rhs] — mean numerator (posterior mean is A^{-1} b)."><span class="n"><span class="pre">b</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.sample_gaussian.z" title="sparsax.sample_gaussian.z (Python parameter) — standard-normal draw with the same shape as b."><span class="n"><span class="pre">z</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.sample_gaussian.want_logdet" title="sparsax.sample_gaussian.want_logdet (Python parameter) — if True, also return log|A|."><span class="n"><span class="pre">want_logdet</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">False</span></code></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L926-L956"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.sample_gaussian" title="Link to this definition">¶</a></dt>
-<dd><p>Draw <code class="docutils literal notranslate"><span class="pre">eta</span> <span class="pre">~</span> <span class="pre">N(A^{-1}</span> <span class="pre">b,</span> <span class="pre">A^{-1})</span></code> from a single factorization of <code class="docutils literal notranslate"><span class="pre">A</span></code>.</p>
-<p>The Gibbs Gaussian-conditional step in one factorization: the posterior
-mean <code class="docutils literal notranslate"><span class="pre">A^{-1}</span> <span class="pre">b</span></code> and the correlated draw share one Cholesky factor. With
-<code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">=</span> <span class="pre">P'</span> <span class="pre">L</span> <span class="pre">L'</span> <span class="pre">P</span></code>, a sample is <code class="docutils literal notranslate"><span class="pre">eta</span> <span class="pre">=</span> <span class="pre">mean</span> <span class="pre">+</span> <span class="pre">P'</span> <span class="pre">L^{-T}</span> <span class="pre">z</span></code> for
-<code class="docutils literal notranslate"><span class="pre">z</span> <span class="pre">~</span> <span class="pre">N(0,</span> <span class="pre">I)</span></code>, since <code class="docutils literal notranslate"><span class="pre">Cov(P'</span> <span class="pre">L^{-T}</span> <span class="pre">z)</span> <span class="pre">=</span> <span class="pre">A^{-1}</span></code>. Built on
-<a class="reference internal" href="sparsax.factor_solve.html#sparsax.factor_solve" title="sparsax.factor_solve (Python function) — Factor A once, then run several solve chains from that one factor."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor_solve()</span></code></a>, so under <code class="docutils literal notranslate"><span class="pre">vmap</span></code> it factors once per element.</p>
+<dt class="sig sig-object highlight py" id="sparsax.logdet_factor">
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">logdet_factor</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.logdet_factor.token" title="sparsax.logdet_factor.token (Python parameter) — Factor from factor()."><span class="n"><span class="pre">token</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L1122-L1143"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.logdet_factor" title="Link to this definition">¶</a></dt>
+<dd><p>Return <code class="docutils literal notranslate"><span class="pre">log|A|</span></code> from a pre-computed factor (no refactor).</p>
+<p>Reads the Cholesky diagonal from the factor held in <code class="docutils literal notranslate"><span class="pre">token</span></code> (from
+<a class="reference internal" href="sparsax.factor.html#sparsax.factor" title="sparsax.factor (Python function) — Factor SPD A once, returning a reusable factor token."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor()</span></code></a>); <code class="docutils literal notranslate"><span class="pre">O(n)</span></code> cost. Forward-only (no autodiff).</p>
 <dl class="field-list simple">
-<dt class="field-odd" id="sparsax.sample_gaussian-parameters">Parameters<span class="colon">:</span><a class="headerlink" href="#sparsax.sample_gaussian-parameters" title="Permalink to this headline">¶</a></dt>
+<dt class="field-odd" id="sparsax.logdet_factor-parameters">Parameters<span class="colon">:</span><a class="headerlink" href="#sparsax.logdet_factor-parameters" title="Permalink to this headline">¶</a></dt>
 <dd class="field-odd"><dl class="simple api-field highlight">
-<dt id="sparsax.sample_gaussian.Ai"><span class="n sig-name">Ai</span><a class="headerlink" href="#sparsax.sample_gaussian.Ai" title="Permalink to this definition">¶</a></dt><dd><p>COO of the SPD precision matrix <code class="docutils literal notranslate"><span class="pre">A</span></code>.</p>
-</dd>
-<dt id="sparsax.sample_gaussian.Aj"><span class="n sig-name">Aj</span><a class="headerlink" href="#sparsax.sample_gaussian.Aj" title="Permalink to this definition">¶</a></dt><dd><p>COO of the SPD precision matrix <code class="docutils literal notranslate"><span class="pre">A</span></code>.</p>
-</dd>
-<dt id="sparsax.sample_gaussian.Ax"><span class="n sig-name">Ax</span><a class="headerlink" href="#sparsax.sample_gaussian.Ax" title="Permalink to this definition">¶</a></dt><dd><p>COO of the SPD precision matrix <code class="docutils literal notranslate"><span class="pre">A</span></code>.</p>
-</dd>
-<dt id="sparsax.sample_gaussian.b"><span class="n sig-name">b</span><a class="headerlink" href="#sparsax.sample_gaussian.b" title="Permalink to this definition">¶</a></dt><dd><p><code class="docutils literal notranslate"><span class="pre">[n]</span></code> or <code class="docutils literal notranslate"><span class="pre">[n,</span> <span class="pre">n_rhs]</span></code> — mean numerator (posterior mean is
-<code class="docutils literal notranslate"><span class="pre">A^{-1}</span> <span class="pre">b</span></code>).</p>
-</dd>
-<dt id="sparsax.sample_gaussian.z"><span class="n sig-name">z</span><a class="headerlink" href="#sparsax.sample_gaussian.z" title="Permalink to this definition">¶</a></dt><dd><p>standard-normal draw with the same shape as <code class="docutils literal notranslate"><span class="pre">b</span></code>.</p>
-</dd>
-<dt id="sparsax.sample_gaussian.want_logdet"><span class="n sig-name">want_logdet</span><span class="o">=</span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">False</span></code><a class="headerlink" href="#sparsax.sample_gaussian.want_logdet" title="Permalink to this definition">¶</a></dt><dd><p>if <code class="docutils literal notranslate"><span class="pre">True</span></code>, also return <code class="docutils literal notranslate"><span class="pre">log|A|</span></code>.</p>
+<dt id="sparsax.logdet_factor.token"><span class="n sig-name">token</span><a class="headerlink" href="#sparsax.logdet_factor.token" title="Permalink to this definition">¶</a></dt><dd><p><code class="docutils literal notranslate"><span class="pre">Factor</span></code> from <a class="reference internal" href="sparsax.factor.html#sparsax.factor" title="sparsax.factor (Python function) — Factor SPD A once, returning a reusable factor token."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor()</span></code></a>.</p>
 </dd>
 </dl>
 </dd>
-<dt class="field-even" id="sparsax.sample_gaussian-returns">Returns<span class="colon">:</span><a class="headerlink" href="#sparsax.sample_gaussian-returns" title="Permalink to this headline">¶</a></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">(eta,</span> <span class="pre">mean)</span></code>, or <code class="docutils literal notranslate"><span class="pre">(eta,</span> <span class="pre">mean,</span> <span class="pre">logdet)</span></code> if <code class="docutils literal notranslate"><span class="pre">want_logdet</span></code>.</p>
+<dt class="field-even" id="sparsax.logdet_factor-returns">Returns<span class="colon">:</span><a class="headerlink" href="#sparsax.logdet_factor-returns" title="Permalink to this headline">¶</a></dt>
+<dd class="field-even"><p>Scalar float64 <code class="docutils literal notranslate"><span class="pre">log(det(A))</span></code>.</p>
 </dd>
 </dl>
+<div class="note admonition">
+<p class="admonition-title">Note</p>
+<p>The logdet is computed at <a class="reference internal" href="sparsax.factor.html#sparsax.factor" title="sparsax.factor (Python function) — Factor SPD A once, returning a reusable factor token."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor()</span></code></a> time and cached on the token,
+so this call is essentially free. Under <code class="docutils literal notranslate"><span class="pre">vmap</span></code> over a batch of tokens
+it routes to the batched handler (one logdet per chain).</p>
+</div>
 </dd></dl>
 
 

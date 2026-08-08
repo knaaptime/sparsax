@@ -11,7 +11,7 @@
       
       
       
-        <link rel="prev" href="sparsax.factorization_count.html">
+        <link rel="prev" href="sparsax.set_num_cache_size.html">
       
       
         <link rel="next" href="sparsax.lu_solve_bcoo.html">
@@ -766,6 +766,30 @@
                 
   
   
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api.html#factor-tokens-hold-a-numeric-factor-open" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>Factor tokens <wbr>(hold a numeric factor open)</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -779,7 +803,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_1_1_14" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_1_1_15" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -796,14 +820,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3_1_1_14" id="__nav_3_1_1_14_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_3_1_1_15" id="__nav_3_1_1_15_label" tabindex="0">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_3_1_1_14_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3_1_1_14">
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_3_1_1_15_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_1_1_15">
             <span class="md-nav__icon md-icon"></span>
             <span>Sparse LU <wbr>(KLU)</span>
           </label>
@@ -1006,12 +1030,36 @@
   
   
     <li class="md-nav__item">
-      <a href="sparsax.set_lu_cache_size.html" class="md-nav__link">
+      <a href="sparsax.lu_logdet.html" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    <span>sparsax.<wbr>set_<wbr>lu_<wbr>cache_<wbr>size</span>
+    <span>sparsax.<wbr>lu_<wbr>logdet</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.lu_logdet_bcoo.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>lu_<wbr>logdet_<wbr>bcoo</span>
     
   </span>
   
@@ -1027,6 +1075,30 @@
       
     </li>
   
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api.html#klu-factor-tokens" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>KLU factor tokens</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
   
 
               
@@ -1330,7 +1402,7 @@
 <h1 id="sparsax-lu-solve">sparsax.lu_solve<a class="headerlink" href="#sparsax-lu-solve" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.lu_solve">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">lu_solve</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_solve.Ai" title="sparsax.lu_solve.Ai (Python parameter) — [n_nz] int32 — COO row indices."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_solve.Aj" title="sparsax.lu_solve.Aj (Python parameter) — [n_nz] int32 — COO column indices."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_solve.Ax" title="sparsax.lu_solve.Ax (Python parameter) — [n_nz] float64 — COO values."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_solve.b" title="sparsax.lu_solve.b (Python parameter) — [n] or [n, n_rhs] float64 — right-hand side(s)."><span class="n"><span class="pre">b</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.8.0/sparsax/__init__.py#L362-L419"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.lu_solve" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">lu_solve</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_solve.Ai" title="sparsax.lu_solve.Ai (Python parameter) — [n_nz] int32 — COO row indices."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_solve.Aj" title="sparsax.lu_solve.Aj (Python parameter) — [n_nz] int32 — COO column indices."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_solve.Ax" title="sparsax.lu_solve.Ax (Python parameter) — [n_nz] float64 — COO values."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_solve.b" title="sparsax.lu_solve.b (Python parameter) — [n] or [n, n_rhs] float64 — right-hand side(s)."><span class="n"><span class="pre">b</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L394-L451"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.lu_solve" title="Link to this definition">¶</a></dt>
 <dd><p>Solve <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">x</span> <span class="pre">=</span> <span class="pre">b</span></code> for a general (non-symmetric) sparse <code class="docutils literal notranslate"><span class="pre">A</span></code> via KLU.</p>
 <p>The LU analogue of <a class="reference internal" href="sparsax.solve.html#sparsax.solve" title="sparsax.solve (Python function) — Solve A x = b for symmetric positive definite sparse A."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve()</span></code></a>: use it when <code class="docutils literal notranslate"><span class="pre">A</span></code> is not symmetric
 positive definite — e.g. <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">=</span> <span class="pre">I</span> <span class="pre">-</span> <span class="pre">rho</span> <span class="pre">W</span></code> for a row-standardised spatial
