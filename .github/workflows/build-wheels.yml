@@ -100,7 +100,7 @@ jobs:
       # C:\msys64; install autoconf via pacman and put it on PATH so vcpkg
       # finds a local copy and skips the broken download.
       CIBW_BEFORE_BUILD_WINDOWS: >
-        C:\msys64\usr\bin\bash.exe -c "pacman -Sy --noconfirm autoconf" &&
+        C:\msys64\usr\bin\bash.exe -lc "pacman -Sy --noconfirm autoconf" &&
         vcpkg update &&
         pip install delvewheel "jax>=0.11" &&
         vcpkg install "suitesparse[gpl]:x64-windows"
