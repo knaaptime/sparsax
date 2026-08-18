@@ -8,7 +8,7 @@ version = "0.9.1"
 description = "JAX-native sparse direct solvers via SuiteSparse (CHOLMOD + KLU)"
 readme = "README.md"
 license = {text = "BSD-3"}
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "jax>=0.11",
     "numpy",

@@ -39,7 +39,7 @@ jobs:
             arch: AMD64
     runs-on: ${{ matrix.os }}
     env:
-      CIBW_BUILD: "cp311-* cp312-* cp313-* cp314-*"
+      CIBW_BUILD: "cp312-* cp313-* cp314-*"
       # jaxlib (needed at build time for XLA FFI headers) has no musllinux
       # wheels published at all -- only manylinux, macOS, and Windows. That's
       # an upstream gap, not something fixable from this workflow, so skip
