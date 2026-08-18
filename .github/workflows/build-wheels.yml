@@ -92,6 +92,7 @@ jobs:
       # apt/Homebrew's suitesparse packages build unconditionally but vcpkg
       # treats as opt-in).
       CIBW_BEFORE_BUILD_WINDOWS: >
+        vcpkg update &&
         pip install delvewheel "jax>=0.11" &&
         vcpkg install "suitesparse[gpl]:x64-windows"
       CIBW_ENVIRONMENT_WINDOWS: >
