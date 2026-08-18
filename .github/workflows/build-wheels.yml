@@ -98,7 +98,7 @@ jobs:
       # vcpkg is at a stale commit; updating vcpkg itself picks up the
       # corrected package pins (e.g. autoconf2.71-2.71-4-any).
       CIBW_BEFORE_BUILD_WINDOWS: >
-        cd "%VCPKG_INSTALLATION_ROOT%" && git pull && .\bootstrap-vcpkg.bat -disableMetrics &&
+        cd "%VCPKG_INSTALLATION_ROOT%" && git checkout master && git pull && .\bootstrap-vcpkg.bat -disableMetrics &&
         pip install delvewheel "jax>=0.11" &&
         vcpkg install "suitesparse[gpl]:x64-windows"
       CIBW_ENVIRONMENT_WINDOWS: >
