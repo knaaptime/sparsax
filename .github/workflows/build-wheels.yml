@@ -92,21 +92,17 @@ jobs:
       # apt/Homebrew's suitesparse packages build unconditionally but vcpkg
       # treats as opt-in).
       #
-      # vcpkg's Windows toolchain bootstrap tries to auto-acquire autoconf
-      # from the msys2 mirror, but the pinned 2.71-3-any artifact has been
-      # removed upstream. None of the SuiteSparse ports actually use
-      # autoconf (they're all CMake-based), but vcpkg_find_acquire_program
-      # still tries to download it. MSYS2 is preinstalled on the runner at
-      # C:\msys64; install autoconf via pacman and put it on PATH so vcpkg
-      # finds a local copy and skips the broken download.
+      # vcpkg's internal msys2 bootstrap hardcodes specific msys2 package
+      # versions (e.g. autoconf2.71-2.71-3-any) that have been removed from
+      # the msys2 mirrors (404 on all mirrors). The runner's preinstalled
+      # vcpkg is at a stale commit; updating vcpkg itself picks up the
+      # corrected package pins (e.g. autoconf2.71-2.71-4-any).
       CIBW_BEFORE_BUILD_WINDOWS: >
-        C:\msys64\usr\bin\bash.exe -lc "pacman -Sy --noconfirm autoconf" &&
-        vcpkg update &&
+        cd "%VCPKG_INSTALLATION_ROOT%" && git pull && .\bootstrap-vcpkg.bat -disableMetrics &&
         pip install delvewheel "jax>=0.11" &&
         vcpkg install "suitesparse[gpl]:x64-windows"
       CIBW_ENVIRONMENT_WINDOWS: >
         CMAKE_PREFIX_PATH="C:/vcpkg/installed/x64-windows"
-        PATH="C:\msys64\usr\bin;${PATH}"
       # --add-path tells delvewheel where to find the CHOLMOD DLLs to bundle,
       # since the vcpkg bin dir isn't on PATH by default.
       CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >
