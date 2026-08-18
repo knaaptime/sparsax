@@ -663,7 +663,7 @@ pip<span class="w"> </span>install<span class="w"> </span>--no-build-isolation<s
 </code></pre></div>
 </div>
 <p>For the PyTensor / PyMC frontend:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;sparsax[pytensor]&quot;</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"sparsax[pytensor]"</span>
 </code></pre></div>
 </div>
 <blockquote>
@@ -675,7 +675,7 @@ pip<span class="w"> </span>install<span class="w"> </span>--no-build-isolation<s
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">sparsax</span>
 
-<span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;jax_enable_x64&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>   <span class="c1"># required: CHOLMOD is float64</span>
+<span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">"jax_enable_x64"</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>   <span class="c1"># required: CHOLMOD is float64</span>
 
 <span class="c1"># SPD matrix in COO form. Entries with Ai &lt;= Aj are used (upper triangle);</span>
 <span class="c1"># pass the full symmetric matrix or just its upper triangle.</span>
@@ -686,7 +686,7 @@ pip<span class="w"> </span>install<span class="w"> </span>--no-build-isolation<s
 
 <span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>          <span class="c1"># eager</span>
 <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>       <span class="c1"># log|A| from the same factorization</span>
-<span class="n">z</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">selinv</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>       <span class="c1"># (A^-1) on A&#39;s sparsity pattern</span>
+<span class="n">z</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">selinv</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>       <span class="c1"># (A^-1) on A's sparsity pattern</span>
 
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">gibbs_step</span><span class="p">(</span><span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
@@ -701,7 +701,7 @@ pip<span class="w"> </span>install<span class="w"> </span>--no-build-isolation<s
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">sparsax</span>
 
-<span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">&quot;jax_enable_x64&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+<span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">"jax_enable_x64"</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
 
 <span class="c1"># General (non-symmetric) matrix in COO form. The full matrix is used —</span>
 <span class="c1"># no upper-triangle folding. A common case is A = I - rho * W.</span>
@@ -744,14 +744,14 @@ serves every requested solve (each a <em>chain</em> of <code class="docutils lit
 that single factor. Under <code class="docutils literal notranslate"><span class="pre">vmap</span></code> it lowers to one batched FFI call that factors <strong>once per
 element</strong>, whatever the number of chains.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="c1"># Gibbs Gaussian step: posterior mean, a draw ~ N(mean, A^-1), and log|A|,</span>
-<span class="c1"># from ONE factorization. eta = mean + P&#39; L^-T z  (since A = P&#39; L L&#39; P).</span>
+<span class="c1"># from ONE factorization. eta = mean + P' L^-T z  (since A = P' L L' P).</span>
 <span class="n">eta</span><span class="p">,</span> <span class="n">mean</span><span class="p">,</span> <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">sample_gaussian</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">want_logdet</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
 <span class="c1"># ...or spell it out with the general primitive:</span>
 <span class="p">(</span><span class="n">mean</span><span class="p">,</span> <span class="n">w</span><span class="p">),</span> <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">factor_solve</span><span class="p">(</span>
     <span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span>
     <span class="p">[(</span><span class="n">b</span><span class="p">,</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_A</span><span class="p">),</span>                             <span class="c1"># A^-1 b</span>
-     <span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="p">(</span><span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_LT</span><span class="p">,</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_PT</span><span class="p">))],</span>        <span class="c1"># P&#39; L^-T z  (chain)</span>
+     <span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="p">(</span><span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_LT</span><span class="p">,</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">MODE_PT</span><span class="p">))],</span>        <span class="c1"># P' L^-T z  (chain)</span>
     <span class="n">want_logdet</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="n">eta</span> <span class="o">=</span> <span class="n">mean</span> <span class="o">+</span> <span class="n">w</span>
 </code></pre></div>
@@ -771,7 +771,7 @@ matrix <code class="docutils literal notranslate"><span class="pre">A(θ)</span>
 inference — HMC/NUTS (via numpyro/blackjax, or PyMC’s JAX sampling backend), VI, or
 empirical-Bayes/MAP optimization:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">neg_log_post</span><span class="p">(</span><span class="n">Ax</span><span class="p">):</span>                                  <span class="c1"># up to constants</span>
-    <span class="n">quad</span> <span class="o">=</span> <span class="n">b</span> <span class="o">@</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>            <span class="c1"># b&#39; A^-1 b   (solve VJP)</span>
+    <span class="n">quad</span> <span class="o">=</span> <span class="n">b</span> <span class="o">@</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>            <span class="c1"># b' A^-1 b   (solve VJP)</span>
     <span class="k">return</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">quad</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>   <span class="c1"># log|A| (logdet VJP)</span>
 
 <span class="n">grad_Ax</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">grad</span><span class="p">(</span><span class="n">neg_log_post</span><span class="p">)(</span><span class="n">Ax</span><span class="p">)</span>                   <span class="c1"># works under jit / vmap</span>
@@ -795,7 +795,7 @@ without going through JAX/XLA. It’s an optional extra — the base package sta
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">pytensor.tensor</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pt</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">sparsax.pytensor</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">cjpt</span>
 
-<span class="n">Ax</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">dvector</span><span class="p">(</span><span class="s2">&quot;Ax&quot;</span><span class="p">)</span>                 <span class="c1"># the precision-matrix values (θ-dependent)</span>
+<span class="n">Ax</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">dvector</span><span class="p">(</span><span class="s2">"Ax"</span><span class="p">)</span>                 <span class="c1"># the precision-matrix values (θ-dependent)</span>
 <span class="c1"># Gaussian log-density (up to constants); grad flows into Ax</span>
 <span class="n">logp</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">pt</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">cjpt</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">))</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">cjpt</span><span class="o">.</span><span class="n">logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
 <span class="n">g</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">grad</span><span class="p">(</span><span class="n">logp</span><span class="p">,</span> <span class="n">Ax</span><span class="p">)</span>                 <span class="c1"># solve VJP + logdet (selected-inverse) VJP</span>
