@@ -1,16 +1,16 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "nanobind>=2.0", "jax>=0.9.0"]
+requires = ["scikit-build-core>=0.10", "nanobind>=2.0", "jax>=0.11"]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "sparsax"
-version = "0.9.0"
+version = "0.9.1"
 description = "JAX-native sparse direct solvers via SuiteSparse (CHOLMOD + KLU)"
 readme = "README.md"
 license = {text = "BSD-3"}
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
-    "jax>=0.9.0",
+    "jax>=0.11",
     "numpy",
 ]
 

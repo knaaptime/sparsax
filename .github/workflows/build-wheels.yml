@@ -68,7 +68,7 @@ jobs:
       # an actual CMake variable regardless of how the project reads it.
       CIBW_BEFORE_BUILD_LINUX: >
         (yum install -y suitesparse-devel || dnf install -y suitesparse-devel || apt-get install -y libsuitesparse-dev || true) &&
-        pip install jax
+        pip install "jax>=0.11"
       CIBW_ENVIRONMENT_LINUX: >
         SKBUILD_CMAKE_ARGS="-DCHOLMOD_PREFIX=/usr"
 
@@ -78,7 +78,7 @@ jobs:
       # CMake at the Homebrew prefix so configure can locate it.
       CIBW_BEFORE_BUILD_MACOS: >
         brew install suitesparse &&
-        pip install jax
+        pip install "jax>=0.11"
       CIBW_ENVIRONMENT_MACOS: >
         SKBUILD_CMAKE_ARGS="-DCHOLMOD_PREFIX=$(brew --prefix suitesparse);-DCMAKE_PREFIX_PATH=$(brew --prefix suitesparse)"
 
@@ -92,7 +92,7 @@ jobs:
       # apt/Homebrew's suitesparse packages build unconditionally but vcpkg
       # treats as opt-in).
       CIBW_BEFORE_BUILD_WINDOWS: >
-        pip install delvewheel jax &&
+        pip install delvewheel "jax>=0.11" &&
         vcpkg install "suitesparse[gpl]:x64-windows"
       CIBW_ENVIRONMENT_WINDOWS: >
         CMAKE_PREFIX_PATH="C:/vcpkg/installed/x64-windows"
