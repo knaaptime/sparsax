@@ -59,7 +59,8 @@ Sparse LU (KLU)
 ~~~~~~~~~~~~~~~
 
 Sparse LU solver for general (non-symmetric) matrices, e.g.
-``A = I - rho W`` for a row-standardised spatial weights matrix.
+``A = I - rho W`` for a row-standardised spatial weights matrix. See
+`Sparse LU (UMFPACK)`_ below for the second LU backend and when to prefer it.
 
 .. autosummary::
    :toctree: generated/
@@ -87,6 +88,51 @@ the token is live. Forward-only (no autodiff).
    lu_solve_factor
    lu_logdet_factor
    set_lu_cache_size
+
+Sparse LU (UMFPACK)
+~~~~~~~~~~~~~~~~~~~
+
+The second LU backend, interchangeable with the KLU functions above — same
+arguments, same results, same JIT/vmap/autodiff behaviour — and differing only
+in which graph it is fast on. KLU has a refactor stage that reuses its pivot
+ordering across value changes and wins several-fold while the graph is sparse;
+UMFPACK re-pivots on every numeric factorization but is multifrontal and uses
+BLAS3, and wins several-fold once the graph densifies. The crossover falls as
+``n`` grows (mean degree around 30 at ``n = 1,500``, around 15 at
+``n = 12,000``), so route between them by timing one numeric factorization with
+each rather than by a fixed degree threshold.
+
+:func:`umf_logdet` reads ``log|det(A)|`` from ``umfpack_*_get_determinant``,
+which returns the determinant in mantissa/exponent form. KLU exposes no
+equivalent, so :func:`lu_logdet` reconstructs it from ``U``'s diagonal and the
+row scale factors as a sum of ``n`` logarithms. Both are overflow-safe and
+agree closely; UMFPACK's is the more accurate at large ``n``, having no
+rounding accumulated over ``n`` terms.
+
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   umf_solve
+   umf_solve_bcoo
+   umf_logdet
+   umf_logdet_bcoo
+
+UMFPACK factor tokens
+~~~~~~~~~~~~~~~~~~~~~
+
+The UMFPACK counterpart of the KLU factor tokens, with identical semantics:
+factor once, then issue an unbounded sequence of solves (``A x = b`` or
+``A^T x = b``) and a logdet against the held factor. Forward-only (no autodiff).
+
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   umf_factor
+   umf_solve_factor
+   umf_logdet_factor
+   set_umf_cache_size
 
 Solve modes
 ~~~~~~~~~~~

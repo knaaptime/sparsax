@@ -109,6 +109,47 @@ if(NOT KLU_TARGET)
     endif()
 endif()
 
+# --- UMFPACK (SuiteSparse multifrontal LU; the second LU backend, for the
+# dense-graph regime where KLU's pivot-ordering reuse stops paying) ---
+# Same discovery strategy as CHOLMOD and KLU.
+find_package(UMFPACK CONFIG QUIET)
+
+set(UMFPACK_TARGET "")
+if(TARGET SuiteSparse::UMFPACK)
+    set(UMFPACK_TARGET SuiteSparse::UMFPACK)
+elseif(TARGET UMFPACK::UMFPACK)
+    set(UMFPACK_TARGET UMFPACK::UMFPACK)
+endif()
+
+if(NOT UMFPACK_TARGET)
+    if(NOT DEFINED UMFPACK_HINT_PREFIX)
+        if(DEFINED CHOLMOD_HINT_PREFIX)
+            set(UMFPACK_HINT_PREFIX "${CHOLMOD_HINT_PREFIX}")
+        else()
+            execute_process(
+                COMMAND "${Python_EXECUTABLE}" -c "import sys; print(sys.prefix)"
+                OUTPUT_VARIABLE UMFPACK_PREFIX
+                OUTPUT_STRIP_TRAILING_WHITESPACE)
+            if(WIN32)
+                set(UMFPACK_HINT_PREFIX "${UMFPACK_PREFIX}/Library")
+            else()
+                set(UMFPACK_HINT_PREFIX "${UMFPACK_PREFIX}")
+            endif()
+        endif()
+    endif()
+    find_library(UMFPACK_LIBRARY NAMES umfpack libumfpack
+        HINTS ${UMFPACK_HINT_PREFIX}/lib)
+    find_path(UMFPACK_INCLUDE_DIR umfpack.h
+        HINTS ${UMFPACK_HINT_PREFIX}/include/suitesparse ${UMFPACK_HINT_PREFIX}/include)
+    if(NOT UMFPACK_LIBRARY OR NOT UMFPACK_INCLUDE_DIR)
+        message(FATAL_ERROR
+            "UMFPACK not found. Checked for a CMake package config, the prefix "
+            "${UMFPACK_HINT_PREFIX}, and standard system locations. Install "
+            "suitesparse (it ships UMFPACK alongside CHOLMOD and KLU) or set "
+            "CMAKE_PREFIX_PATH.")
+    endif()
+endif()
+
 # Locate nanobind via its Python package.
 execute_process(
     COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
@@ -134,6 +175,13 @@ if(KLU_TARGET)
 else()
     target_include_directories(sparsax_cpp PRIVATE ${KLU_INCLUDE_DIR})
     target_link_libraries(sparsax_cpp PRIVATE ${KLU_LIBRARY})
+endif()
+
+if(UMFPACK_TARGET)
+    target_link_libraries(sparsax_cpp PRIVATE ${UMFPACK_TARGET})
+else()
+    target_include_directories(sparsax_cpp PRIVATE ${UMFPACK_INCLUDE_DIR})
+    target_link_libraries(sparsax_cpp PRIVATE ${UMFPACK_LIBRARY})
 endif()
 
 # Embed an RPATH covering every library actually linked (CHOLMOD, and

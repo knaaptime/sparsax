@@ -6,9 +6,10 @@
 
 JAX & PyTensor-native sparse direct solvers backed by [SuiteSparse](https://github.com/DrTimothyAldenDavis/SuiteSparse).
 `solve`, `logdet`, and friends are [XLA FFI](https://docs.jax.dev/en/latest/ffi.html) custom
-calls into **CHOLMOD** (Cholesky, for symmetric positive definite matrices) and **KLU** (LU,
-for general non-symmetric matrices), so sparse factorizations run at full native speed
-**inside `@jax.jit`** (and `lax.scan` / `lax.fori_loop`) — no Python callback overhead.
+calls into **CHOLMOD** (Cholesky, for symmetric positive definite matrices) and **KLU** and
+**UMFPACK** (LU, for general non-symmetric matrices), so sparse factorizations run at full
+native speed **inside `@jax.jit`** (and `lax.scan` / `lax.fori_loop`) — no Python callback
+overhead.
 
 ## Why?
 
@@ -32,18 +33,24 @@ than `scipy.sparse.linalg.splu`, while running entirely inside `jax.jit`.
   `A`.
 - **KLU** — `lu_solve`, `lu_logdet`, `lu_factor` / `lu_solve_factor` for general
   non-symmetric `A` (e.g. `A = I − ρW` with a row-standardised spatial weights matrix).
+- **UMFPACK** — `umf_solve`, `umf_logdet`, `umf_factor` / `umf_solve_factor`: the same API
+  over SuiteSparse's multifrontal LU, for the same non-symmetric `A`. The two LU backends are
+  interchangeable and differ only in which graph they are fast on — see
+  *Two LU backends: KLU vs UMFPACK* below.
 - **JIT / `lax.scan`**: the symbolic analysis is computed once and reused across iterations.
 - **`vmap`**: `jax.vmap(solve)` lowers to a *single* native FFI call that loops over the
   batch in C++ (reusing the cached analysis), rather than XLA per-iteration dispatch.
   Composes with `grad` (`vmap(grad(solve))` batches too).
 - **Autodiff**: `solve` has a custom reverse-mode VJP in both `Ax` and `b`; `logdet` has one
   in `Ax` via the selected inverse. `lu_solve` is differentiable in `Ax` and `b` (transpose
-  solve); `lu_logdet` is forward-only. Together `solve`/`logdet` give the gradient of a
+  solve), as is `umf_solve`; `lu_logdet` and `umf_logdet` are forward-only. Together
+  `solve`/`logdet` give the gradient of a
   Gaussian log-density, so a precision matrix's values can be fit by HMC/NUTS, VI, or
   empirical-Bayes optimization.
-- **Factor-once primitives** — `factor_solve` / `sample_gaussian` (CHOLMOD) and
-  `lu_factor` / `lu_solve_factor` (KLU) factorize once and serve an unbounded sequence of
-  solves against the same factor, inside `lax.fori_loop` and under `vmap`.
+- **Factor-once primitives** — `factor_solve` / `sample_gaussian` (CHOLMOD), `lu_factor` /
+  `lu_solve_factor` (KLU), and `umf_factor` / `umf_solve_factor` (UMFPACK) factorize once and
+  serve an unbounded sequence of solves against the same factor, inside `lax.fori_loop` and
+  under `vmap`.
 - **Multiple right-hand sides**: `b` may be `(n,)` or `(n, n_rhs)`.
 - **PyMC / PyTensor** frontend (optional extra) for the same CHOLMOD core, so PyMC's default
   NUTS sampler can differentiate through the sparse solve and log-determinant without going
@@ -125,18 +132,70 @@ call. `lu_solve` is differentiable in `Ax` and `b` (transpose solve); `lu_logdet
 (the non-symmetric logdet gradient is the full selected inverse, which KLU does not expose —
 use `logdet` for symmetric `A` when a gradient is needed).
 
+## Two LU backends: KLU vs UMFPACK
+
+`umf_*` mirrors `lu_*` function for function — same arguments, same results, same JIT / `vmap` /
+autodiff behaviour — over SuiteSparse **UMFPACK** instead of KLU:
+
+```python
+x  = sparsax.umf_solve(Ai, Aj, Ax, b)       # drop-in for lu_solve
+ld = sparsax.umf_logdet(Ai, Aj, Ax, n=n)    # log|det(A)|, from get_determinant
+```
+
+They differ only in which graph they are fast on, and the difference runs both ways:
+
+- **KLU** has a third stage UMFPACK lacks — `klu_analyze` → `klu_factor` → **`klu_refactor`** —
+  whose refactor reuses the symbolic analysis *and the pivot ordering*, so a refactor at a new
+  ρ is pure numeric work. That saves 74–86% of a full factorization while the graph is sparse.
+- **UMFPACK** re-pivots inside every `numeric()` call (it is multifrontal with partial
+  pivoting, so the pivot sequence depends on the values), but it is frontal and uses BLAS3
+  where KLU is a scalar circuit-simulation code with no supernodal path. Once fronts get wide,
+  that wins by a lot.
+
+Measured through `sparsax` on row-standardised distance-band graphs at *n* = 3,000, timing
+`logdet` over 12 values of ρ on one pattern:
+
+| mean degree | nnz | `lu_logdet` (ms) | `umf_logdet` (ms) | winner |
+|---:|---:|---:|---:|:--|
+| 2.0 | 9,134 | **0.37** | 0.79 | KLU, 2.1× |
+| 7.9 | 26,662 | **1.03** | 2.77 | KLU, 2.7× |
+| 21.2 | 66,750 | 7.35 | **6.15** | UMFPACK, 1.2× |
+| 65.2 | 198,726 | 48.10 | **15.12** | UMFPACK, 3.2× |
+| 160.0 | 483,092 | 154.19 | **85.03** | UMFPACK, 1.8× |
+
+> **Route by measurement, not by a threshold.** The crossover **moves with *n*** — mean degree
+> ≈30 at *n* = 1,500 falling to ≈15 at *n* = 12,000 — so a hardcoded cutoff is wrong at both
+> ends. A factorization is being computed anyway: time one with each backend and route on the
+> result. The probe costs roughly 5–10% of a ρ-node budget, and it is dearest exactly where the
+> choice matters least.
+
+One further asymmetry: `umf_logdet` reads the determinant straight out of
+`umfpack_*_get_determinant`, in mantissa/exponent form (`det = Mx · 10^Ex`). KLU exposes no
+equivalent, so `lu_logdet` reconstructs it from `U`'s diagonal and the row scale factors as a
+sum of *n* logarithms. Both are overflow-safe and agree to ~13 digits; UMFPACK's is the more
+accurate of the two at large *n*, since it does not accumulate rounding over *n* terms
+(at *n* = 4,000 with `det = 1e4000`, UMFPACK is exact to printed precision and the log-sum
+drifts by ~3e-14 relative). Neither LU logdet is differentiable — that gradient is the full
+selected inverse, which neither backend exposes.
+
+Iterative refinement is **off** on the UMFPACK path (its own default is two steps), so an
+`umf_solve` costs the same triangular work as its KLU counterpart and the two can be timed
+against each other fairly.
+
 ## How it works
 
-`solve` and `logdet` (and their `lu_*` counterparts) are XLA FFI custom calls into CHOLMOD and
-KLU. The extension caches symbolic analyses keyed on the sparsity pattern, so repeated calls
+`solve` and `logdet` (and their `lu_*` / `umf_*` counterparts) are XLA FFI custom calls into
+CHOLMOD, KLU, and UMFPACK. Each backend keeps its own registry of symbolic analyses keyed on the
+sparsity pattern, so repeated calls
 with the same pattern only pay for the numeric refactorization — and calls with unchanged
 values skip even that, sharing one factorization between `solve` and `logdet`. There are no
 handles to manage and nothing to pass through JIT boundaries; the caching is transparent.
 
 For the "hold a numeric factor open" case — e.g. a shift-invert Krylov basis that reuses one
 factorization across an unbounded sequence of solves whose RHS depends on the previous solve's
-output — `factor` / `solve_factor` / `logdet_factor` (CHOLMOD) and `lu_factor` /
-`lu_solve_factor` / `lu_logdet_factor` (KLU) return an opaque token carrying a strong reference
+output — `factor` / `solve_factor` / `logdet_factor` (CHOLMOD), `lu_factor` /
+`lu_solve_factor` / `lu_logdet_factor` (KLU), and `umf_factor` / `umf_solve_factor` /
+`umf_logdet_factor` (UMFPACK) return an opaque token carrying a strong reference
 to the numeric factor, guaranteeing reuse inside `lax.fori_loop` without relying on a host-side
 cache surviving JIT-compiled iterations.
 
@@ -200,8 +259,9 @@ var = z[Ai == Aj]                      # diag(A^-1): Gaussian marginal variances
 
 `selinv` shares the factorization cache, is JIT-compilable and `vmap`-able, and costs one
 selected-inversion pass over the factor (`O(nnz(L))`-ish), not `n` solves. `factor_solve` /
-`sample_gaussian` remain forward-only. `lu_solve` carries the analogous reverse-mode rule (a
-transpose solve for the VJP); `lu_logdet` is not differentiable.
+`sample_gaussian` remain forward-only. `lu_solve` and `umf_solve` carry the analogous
+reverse-mode rule (a transpose solve for the VJP); neither `lu_logdet` nor `umf_logdet` is
+differentiable.
 
 ## PyMC / PyTensor (NUTS)
 
@@ -235,7 +295,7 @@ versions use `grad`.
 ## JAX sparse (`BCOO`)
 
 JAX's native sparse type is `jax.experimental.sparse.BCOO`, whose `.indices` is `(nnz, 2)` and
-`.data` is `(nnz,)`. Convenience wrappers accept one directly (CHOLMOD and KLU alike):
+`.data` is `(nnz,)`. Convenience wrappers accept one directly (every backend alike):
 
 ```python
 from jax.experimental import sparse as jsparse
@@ -249,4 +309,33 @@ x  = sparsax.update_solve_bcoo(A, C, b)     # rank-k update/downdate
 # KLU
 x  = sparsax.lu_solve_bcoo(A, b)
 ld = sparsax.lu_logdet_bcoo(A)
+
+# UMFPACK
+x  = sparsax.umf_solve_bcoo(A, b)
+ld = sparsax.umf_logdet_bcoo(A)
 ```
+
+## License
+
+`sparsax`'s own source is **BSD-3-Clause** (`LICENSE.txt`).
+
+**Binary distributions are not.** The extension links SuiteSparse, and parts of
+SuiteSparse are **GPL-2.0-or-later** — UMFPACK in full, plus CHOLMOD's MatrixOps,
+Modify, and Supernodal modules. The wheels on PyPI, the conda-forge package, and
+anything you build yourself are combined works that bundle that code, so
+**redistributing a built `sparsax` carries GPL obligations**, not just BSD ones.
+BSD-3-Clause is GPL-compatible, so making the combination is fine — but the result
+is not permissive.
+
+This is not incidental: `update_solve` is built on CHOLMOD's `cholmod_updown`
+(Modify), CHOLMOD's default `AUTO` strategy selects the Supernodal factorization,
+and the whole `umf_*` family is UMFPACK.
+
+*Using* `sparsax` — running it, doing research with it, publishing results — is
+unaffected; the GPL governs distribution, not use. Depending on it from your own
+permissively-licensed source is likewise fine. It matters when you ship a binary
+artifact with SuiteSparse inside it, especially in a proprietary product.
+
+See [`NOTICE.md`](NOTICE.md) for the per-component breakdown and what a
+permissive-only build would cost. None of this is legal advice; if you are
+redistributing commercially, get it checked properly.
