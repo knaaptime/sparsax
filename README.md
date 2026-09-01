@@ -314,3 +314,28 @@ ld = sparsax.lu_logdet_bcoo(A)
 x  = sparsax.umf_solve_bcoo(A, b)
 ld = sparsax.umf_logdet_bcoo(A)
 ```
+
+## License
+
+`sparsax`'s own source is **BSD-3-Clause** (`LICENSE.txt`).
+
+**Binary distributions are not.** The extension links SuiteSparse, and parts of
+SuiteSparse are **GPL-2.0-or-later** — UMFPACK in full, plus CHOLMOD's MatrixOps,
+Modify, and Supernodal modules. The wheels on PyPI, the conda-forge package, and
+anything you build yourself are combined works that bundle that code, so
+**redistributing a built `sparsax` carries GPL obligations**, not just BSD ones.
+BSD-3-Clause is GPL-compatible, so making the combination is fine — but the result
+is not permissive.
+
+This is not incidental: `update_solve` is built on CHOLMOD's `cholmod_updown`
+(Modify), CHOLMOD's default `AUTO` strategy selects the Supernodal factorization,
+and the whole `umf_*` family is UMFPACK.
+
+*Using* `sparsax` — running it, doing research with it, publishing results — is
+unaffected; the GPL governs distribution, not use. Depending on it from your own
+permissively-licensed source is likewise fine. It matters when you ship a binary
+artifact with SuiteSparse inside it, especially in a proprietary product.
+
+See [`NOTICE.md`](NOTICE.md) for the per-component breakdown and what a
+permissive-only build would cost. None of this is legal advice; if you are
+redistributing commercially, get it checked properly.

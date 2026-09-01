@@ -5,9 +5,12 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "sparsax"
 version = "0.9.1"
-description = "JAX-native sparse direct solvers via SuiteSparse (CHOLMOD + KLU)"
+description = "JAX-native sparse direct solvers via SuiteSparse (CHOLMOD, KLU, UMFPACK)"
 readme = "README.md"
-license = {text = "BSD-3"}
+# sparsax's own source. NOTE: a *built* sparsax links GPL-2.0-or-later
+# SuiteSparse components (UMFPACK; CHOLMOD's Modify and Supernodal), so binary
+# distributions carry GPL obligations. See NOTICE.md.
+license = {text = "BSD-3-Clause"}
 requires-python = ">=3.12"
 dependencies = [
     "jax>=0.11",
@@ -23,6 +26,9 @@ pytensor = ["pytensor>=2.18"]
 [tool.scikit-build]
 cmake.build-type = "Release"
 wheel.packages = ["src/sparsax"]
+# Ship the third-party licensing notice alongside the license itself, so it
+# reaches anyone who only ever sees the wheel.
+wheel.license-files = ["LICENSE.txt", "NOTICE.md"]
 
 [tool.ruff.lint]
 # The test modules must call jax.config.update("jax_enable_x64", True) before
