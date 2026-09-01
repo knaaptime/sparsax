@@ -1,9 +1,16 @@
-"""sparsax: JAX-native sparse direct solvers via SuiteSparse (CHOLMOD + KLU).
+"""sparsax: JAX-native sparse direct solvers via SuiteSparse.
 
 Exposes SuiteSparse's sparse direct factorizations — CHOLMOD (Cholesky, for SPD
-matrices) and KLU (LU, for general non-symmetric matrices) — as XLA FFI custom
-calls, so solves run at full native speed inside ``@jax.jit`` (and ``lax.scan`` /
-``lax.fori_loop``) with no Python callback overhead.
+matrices), KLU and UMFPACK (LU, for general non-symmetric matrices) — as XLA FFI
+custom calls, so solves run at full native speed inside ``@jax.jit`` (and
+``lax.scan`` / ``lax.fori_loop``) with no Python callback overhead.
+
+The two LU backends are interchangeable (``lu_*`` for KLU, ``umf_*`` for
+UMFPACK) and differ only in which graph they are fast on: KLU reuses its pivot
+ordering across value changes and wins several-fold while the graph is sparse;
+UMFPACK re-pivots but is frontal and uses BLAS3, and wins several-fold once the
+graph densifies. The crossover moves with ``n``, so pick between them by timing
+a factorization rather than by a degree threshold.
 
 The matrix is a symmetric positive definite matrix in COO format. Entries on
 or above the diagonal (``Ai <= Aj``) are used; entries below the diagonal are
@@ -40,7 +47,9 @@ differentiable in ``Ax`` (reverse mode) via the selected inverse (:func:`selinv`
 ``jax.vmap`` the whole batch is solved in a single native FFI call that loops
 in C++ and reuses the cached analysis. :func:`update_solve` exposes CHOLMOD's
 rank-k update/downdate for cheap solves of ``(A ± C C') x = b`` with ``A`` held
-fixed.
+fixed. The UMFPACK path mirrors the KLU one function for function
+(:func:`umf_solve`, :func:`umf_logdet`, :func:`umf_factor` /
+:func:`umf_solve_factor` / :func:`umf_logdet_factor`).
 """
 
 import jax
@@ -67,7 +76,15 @@ __all__ = [
     "lu_factor",
     "lu_solve_factor",
     "lu_logdet_factor",
+    "umf_solve",
+    "umf_solve_bcoo",
+    "umf_logdet",
+    "umf_logdet_bcoo",
+    "umf_factor",
+    "umf_solve_factor",
+    "umf_logdet_factor",
     "set_lu_cache_size",
+    "set_umf_cache_size",
     "set_num_cache_size",
     "solve_bcoo",
     "logdet_bcoo",
@@ -172,6 +189,45 @@ jax.ffi.register_ffi_target(
 jax.ffi.register_ffi_target(
     "sparsax_lu_logdet_factor_batched_f64",
     _cpp.lu_logdet_factor_batched_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_umf_solve_f64", _cpp.umf_solve_f64_capsule(), platform="cpu"
+)
+jax.ffi.register_ffi_target(
+    "sparsax_umf_solve_batched_f64",
+    _cpp.umf_solve_batched_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_umf_factor_f64", _cpp.umf_factor_f64_capsule(), platform="cpu"
+)
+jax.ffi.register_ffi_target(
+    "sparsax_umf_solve_factor_f64",
+    _cpp.umf_solve_factor_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_umf_solve_factor_batched_f64",
+    _cpp.umf_solve_factor_batched_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_umf_logdet_f64", _cpp.umf_logdet_f64_capsule(), platform="cpu"
+)
+jax.ffi.register_ffi_target(
+    "sparsax_umf_logdet_batched_f64",
+    _cpp.umf_logdet_batched_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_umf_logdet_factor_f64",
+    _cpp.umf_logdet_factor_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_umf_logdet_factor_batched_f64",
+    _cpp.umf_logdet_factor_batched_f64_capsule(),
     platform="cpu",
 )
 
@@ -681,6 +737,341 @@ def lu_logdet_factor(token):
     return _lu_logdet_factor_ffi(token)
 
 
+# --- UMFPACK: the second sparse-LU backend for non-symmetric A --------------
+#
+# Same shape as the KLU functions above — COO in, pattern-keyed symbolic cache,
+# an LRU of numeric factors, one native call per vmap batch — but backed by
+# SuiteSparse UMFPACK instead of KLU. Which of the two is faster depends on how
+# dense the graph is, and the difference is large in both directions:
+#
+#   - KLU has a third stage UMFPACK lacks (klu_analyze -> klu_factor ->
+#     klu_refactor), whose refactor reuses the symbolic analysis *and the pivot
+#     ordering*, so a refactor at a new rho is pure numeric work. That saves
+#     74-86% of a full factorization while the graph is sparse.
+#   - UMFPACK re-pivots inside every numeric() call (it is multifrontal with
+#     partial pivoting, so the pivot sequence depends on the values), but it is
+#     frontal and uses BLAS3, where KLU is a scalar circuit-simulation code with
+#     no supernodal path. Once fronts get wide, that wins by a lot.
+#
+# Measured on distance-band graphs at n = 3,000, KLU wins ~4-5x at mean degree
+# <= 8 and loses 3.5-8.6x above ~25. But the crossover moves with n — mean
+# degree ~30 at n = 1,500 falling to ~15 at n = 12,000 — so a hardcoded degree
+# threshold is wrong at both ends. Route by measurement instead: a
+# factorization is being computed anyway, so time one with each backend and use
+# the winner. The probe costs roughly 5-10% of a rho-node budget, and it is
+# dearest exactly where the choice matters least.
+#
+# umf_logdet reads log|det(A)| straight out of umfpack_*_get_determinant, which
+# returns the determinant in mantissa/exponent form (det = Mx * 10^Ex). KLU
+# exposes no equivalent, so lu_logdet reconstructs the same number as a sum of n
+# logarithms off the U diagonal and the row scale factors — overflow-safe too,
+# but carrying rounding accumulated over n terms.
+
+
+def _umf_solve_batched(Ai, Aj, Ax, b, trans):
+    call = jax.ffi.ffi_call(
+        "sparsax_umf_solve_batched_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
+    )
+    return call(Ai, Aj, Ax, b, trans=np.int64(trans))
+
+
+_UMF_DISPATCH = {}
+
+
+def _make_umf_dispatch(trans):
+    @jax.custom_batching.custom_vmap
+    def dispatch(Ai, Aj, Ax, b):
+        call = jax.ffi.ffi_call(
+            "sparsax_umf_solve_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
+        )
+        return call(Ai, Aj, Ax, b, trans=np.int64(trans))
+
+    @dispatch.def_vmap
+    def _dispatch_vmap(axis_size, in_batched, Ai, Aj, Ax, b):
+        Ai_batched, Aj_batched, Ax_batched, b_batched = in_batched
+        Ai, Aj = _share_pattern(Ai, Aj, Ai_batched, Aj_batched)
+        if not Ax_batched:
+            Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
+        if not b_batched:
+            b = jnp.broadcast_to(b, (axis_size,) + b.shape)
+        return _umf_solve_batched(Ai, Aj, Ax, b, trans), True
+
+    return dispatch
+
+
+def _umf_solve_ffi(Ai, Aj, Ax, b, trans):
+    dispatch = _UMF_DISPATCH.get(trans)
+    if dispatch is None:
+        dispatch = _UMF_DISPATCH[trans] = _make_umf_dispatch(trans)
+    return dispatch(Ai, Aj, Ax, b)
+
+
+def umf_solve(Ai, Aj, Ax, b):
+    """Solve ``A x = b`` for a general (non-symmetric) sparse ``A`` via UMFPACK.
+
+    Interchangeable with :func:`lu_solve` — same arguments, same result, same
+    JIT/vmap/AD behaviour — but routed through SuiteSparse UMFPACK's
+    multifrontal LU rather than KLU. Prefer it when the graph is dense enough
+    that KLU's pivot-ordering reuse has stopped paying (see the module notes:
+    KLU wins several-fold on contiguity-style graphs, UMFPACK wins several-fold
+    once mean degree passes roughly 15-30, with the crossover falling as ``n``
+    grows). Time both rather than assuming a threshold.
+
+    Args:
+        Ai: ``[n_nz]`` int32 — COO row indices.
+        Aj: ``[n_nz]`` int32 — COO column indices. As for :func:`lu_solve`, the
+            full matrix is used (no upper-triangle folding).
+        Ax: ``[n_nz]`` float64 — COO values. Duplicates are summed.
+        b: ``[n]`` or ``[n, n_rhs]`` float64 — right-hand side(s).
+
+    Returns:
+        ``x`` with the same shape as ``b``.
+
+    Raises:
+        Exception: if ``A`` is singular (raised by the XLA runtime with the
+            UMFPACK status in the message).
+
+    Note:
+        Iterative refinement is off (UMFPACK's default is two steps), so a
+        solve costs the same triangular work as its KLU counterpart and the two
+        backends can be timed against each other fairly.
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    b = jnp.asarray(b, jnp.float64)
+    if b.ndim not in (1, 2):
+        raise ValueError(f"b must be 1D or 2D, got shape {b.shape}")
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError(
+            f"Ai, Aj, Ax must be 1D with equal lengths, got "
+            f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
+        )
+
+    # Same VJP as lu_solve: v solves A^T v = g on the same cached factor, so
+    # db = v and dAx[k] = -v_i x_j for COO entry k at (i, j).
+    @jax.custom_vjp
+    def _umf(Ax, b):
+        return _umf_solve_ffi(Ai, Aj, Ax, b, 0)
+
+    def _fwd(Ax, b):
+        x = _umf_solve_ffi(Ai, Aj, Ax, b, 0)
+        return x, (Ax, x)
+
+    def _bwd(res, g):
+        Ax_saved, x = res
+        v = _umf_solve_ffi(Ai, Aj, Ax_saved, g, 1)  # A^T v = g
+        if x.ndim == 1:
+            dAx = -(v[Ai] * x[Aj])
+        else:
+            dAx = -(v[Ai] * x[Aj]).sum(-1)
+        return dAx, v
+
+    _umf.defvjp(_fwd, _bwd)
+    return _umf(Ax, b)
+
+
+def umf_solve_bcoo(A, b):
+    """:func:`umf_solve` for a JAX ``BCOO`` matrix ``A``."""
+    Ai, Aj, Ax = _bcoo_parts(A)
+    return umf_solve(Ai, Aj, Ax, b)
+
+
+def _umf_logdet_ffi(Ai, Aj, Ax, n):
+    call = jax.ffi.ffi_call(
+        "sparsax_umf_logdet_f64",
+        jax.ShapeDtypeStruct((), jnp.float64),
+        vmap_method="sequential",
+    )
+    return call(Ai, Aj, Ax, n=np.int64(n))
+
+
+def umf_logdet(Ai, Aj, Ax, n):
+    """Log-determinant of a general (non-symmetric) sparse matrix via UMFPACK.
+
+    The UMFPACK counterpart of :func:`lu_logdet`, and the reason this backend
+    carries a logdet at all: ``umfpack_*_get_determinant`` returns the
+    determinant of ``A`` directly from the LU factors and permutations, in
+    mantissa/exponent form. :func:`lu_logdet` has to reconstruct the same
+    quantity from ``U``'s diagonal and the row scale factors as a sum of ``n``
+    logarithms; both are overflow-safe, but UMFPACK's accumulates no rounding
+    over ``n`` terms and is the more accurate at large ``n``. This is the SAR
+    Jacobian ``log|I - rho W|`` for a directed ``W``.
+
+    Shares the per-pattern LRU factor cache with :func:`umf_solve`, so an
+    ``umf_solve`` and an ``umf_logdet`` at identical values factorize once.
+
+    Not differentiable — the non-symmetric logdet gradient is the full selected
+    inverse, which neither LU backend exposes. Use :func:`logdet` for symmetric
+    ``A`` when a gradient is needed.
+
+    Args:
+        Ai, Aj: ``[n_nz]`` int32 — COO row/column indices (full matrix, no
+            upper-triangle folding).
+        Ax: ``[n_nz]`` float64 — COO values. Duplicates are summed.
+        n: matrix dimension (static Python int).
+
+    Returns:
+        Scalar float64 ``log(abs(det(A)))``.
+
+    Raises:
+        Exception: if ``A`` is singular.
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError(
+            f"Ai, Aj, Ax must be 1D with equal lengths, got "
+            f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
+        )
+    return _umf_logdet_ffi(Ai, Aj, Ax, int(n))
+
+
+def umf_logdet_bcoo(A):
+    """:func:`umf_logdet` for a JAX ``BCOO`` matrix ``A``."""
+    Ai, Aj, Ax = _bcoo_parts(A)
+    return umf_logdet(Ai, Aj, Ax, A.shape[0])
+
+
+def _umf_factor_ffi(Ai, Aj, Ax, n):
+    call = jax.ffi.ffi_call(
+        "sparsax_umf_factor_f64",
+        jax.ShapeDtypeStruct((2,), jnp.int64),
+        vmap_method="sequential",
+    )
+    return call(Ai, Aj, Ax, n=np.int64(n))
+
+
+def umf_factor(Ai, Aj, Ax, n):
+    """Factor general (non-symmetric) ``A`` once via UMFPACK, return a token.
+
+    The UMFPACK counterpart of :func:`lu_factor`. The token is an opaque
+    ``int64[2]`` array carrying a strong reference to a UMFPACK numeric factor
+    held in the extension's token table; pass it to :func:`umf_solve_factor` and
+    :func:`umf_logdet_factor` to issue an unbounded sequence of solves and a
+    logdet against the same factor. The per-pattern LRU cannot evict the factor
+    while the token is live.
+
+    Forward-only (no autodiff). Use :func:`umf_solve` when gradients are needed.
+
+    Args:
+        Ai, Aj: ``[n_nz]`` int32 — COO row/column indices (full matrix).
+        Ax: ``[n_nz]`` float64 — COO values.
+        n: matrix dimension (static Python int).
+
+    Returns:
+        An opaque ``int64[2]`` token. Not meant to be inspected; pass to
+        :func:`umf_solve_factor` / :func:`umf_logdet_factor`.
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError(
+            f"Ai, Aj, Ax must be 1D with equal lengths, got "
+            f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
+        )
+    return _umf_factor_ffi(Ai, Aj, Ax, int(n))
+
+
+_UMF_SF_DISPATCH = {}
+
+
+def _make_umf_solve_factor_dispatch(trans):
+    @jax.custom_batching.custom_vmap
+    def dispatch(token, b):
+        call = jax.ffi.ffi_call(
+            "sparsax_umf_solve_factor_f64", jax.ShapeDtypeStruct(b.shape, b.dtype)
+        )
+        return call(token, b, trans=np.int64(trans))
+
+    @dispatch.def_vmap
+    def _dispatch_vmap(axis_size, in_batched, token, b):
+        token_batched, b_batched = in_batched
+        if b.ndim not in (2, 3):
+            raise ValueError(f"vmapped b must be 2D or 3D, got shape {b.shape}")
+        if not token_batched:
+            token = jnp.broadcast_to(token, (axis_size,) + token.shape)
+        if not b_batched:
+            b = jnp.broadcast_to(b, (axis_size,) + b.shape)
+        call = jax.ffi.ffi_call(
+            "sparsax_umf_solve_factor_batched_f64",
+            jax.ShapeDtypeStruct(b.shape, b.dtype),
+        )
+        return call(token, b, trans=np.int64(trans)), True
+
+    return dispatch
+
+
+def umf_solve_factor(token, b, trans=False):
+    """Solve ``A x = b`` (or ``A^T x = b``) using a pre-computed UMFPACK factor.
+
+    The UMFPACK counterpart of :func:`lu_solve_factor`. Reuses the numeric
+    factor held in ``token`` (from :func:`umf_factor`): triangular solves only,
+    no factorization. The factor is not consumed. Forward-only (no autodiff).
+
+    Args:
+        token: token from :func:`umf_factor` (an opaque ``int64[2]`` array).
+        b: ``[n]`` or ``[n, n_rhs]`` float64 — right-hand side(s).
+        trans: if ``True``, solve ``A^T x = b`` (the adjoint); otherwise
+            ``A x = b``.
+
+    Returns:
+        ``x`` with the same shape as ``b``.
+
+    Note:
+        ``vmap(umf_solve_factor, in_axes=(None, 0))`` reuses one factor across a
+        batch of right-hand sides — the Krylov-recurrence shape (one factor,
+        ``m+1`` solves). ``vmap(umf_factor)`` then ``vmap(umf_solve_factor)``
+        (both batched) gives one factor per batch element.
+    """
+    _require_x64()
+    token = jnp.asarray(token, jnp.int64)
+    b = jnp.asarray(b, jnp.float64)
+    if token.shape != (2,):
+        raise ValueError(f"token must be int64[2], got shape {token.shape}")
+    if b.ndim not in (1, 2):
+        raise ValueError(f"b must be 1D or 2D, got shape {b.shape}")
+    key = 1 if trans else 0
+    dispatch = _UMF_SF_DISPATCH.get(key)
+    if dispatch is None:
+        dispatch = _UMF_SF_DISPATCH[key] = _make_umf_solve_factor_dispatch(key)
+    return dispatch(token, b)
+
+
+def _umf_logdet_factor_ffi(token):
+    call = jax.ffi.ffi_call(
+        "sparsax_umf_logdet_factor_f64",
+        jax.ShapeDtypeStruct((), jnp.float64),
+        vmap_method="sequential",
+    )
+    return call(token)
+
+
+def umf_logdet_factor(token):
+    """Return ``log|det(A)|`` from a pre-computed UMFPACK factor (no refactor).
+
+    Reads the determinant off the factor held in ``token`` (from
+    :func:`umf_factor`) with ``umfpack_*_get_determinant``. Forward-only (no
+    autodiff).
+
+    Args:
+        token: token from :func:`umf_factor`.
+
+    Returns:
+        Scalar float64 ``log(abs(det(A)))``.
+    """
+    _require_x64()
+    token = jnp.asarray(token, jnp.int64)
+    if token.shape != (2,):
+        raise ValueError(f"token must be int64[2], got shape {token.shape}")
+    return _umf_logdet_factor_ffi(token)
+
+
 def set_lu_cache_size(n):
     """Set how many KLU numeric factors are retained per sparsity pattern.
 
@@ -690,6 +1081,17 @@ def set_lu_cache_size(n):
     least as many factors as the vmap batch size (number of chains). Default 32.
     """
     _cpp.set_lu_cache_size(int(n))
+
+
+def set_umf_cache_size(n):
+    """Set how many UMFPACK numeric factors are retained per sparsity pattern.
+
+    The UMFPACK counterpart of :func:`set_lu_cache_size`, with the same rule:
+    the cache is content-addressed on the COO values, so a vmapped
+    factor-once-solve-many sweep must be able to hold one factor per batch
+    element or it silently refactors on every call. Default 32.
+    """
+    _cpp.set_umf_cache_size(int(n))
 
 
 def set_num_cache_size(n):

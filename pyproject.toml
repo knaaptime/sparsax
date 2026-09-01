@@ -23,3 +23,9 @@ pytensor = ["pytensor>=2.18"]
 [tool.scikit-build]
 cmake.build-type = "Release"
 wheel.packages = ["src/sparsax"]
+
+[tool.ruff.lint]
+# The test modules must call jax.config.update("jax_enable_x64", True) before
+# importing sparsax (CHOLMOD, KLU, and UMFPACK are all float64), so imports
+# cannot all sit at the top of the file.
+ignore = ["E402"]
