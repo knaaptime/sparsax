@@ -1095,17 +1095,15 @@ def set_umf_cache_size(n):
 
 
 def set_num_cache_size(n):
-    """Cap the value-keyed numeric-factor cache per CHOLMOD pattern.
+    """Cap the value-keyed numeric-factor cache per CHOLMOD pattern (default 8).
 
-    The :func:`factor` / :func:`solve_factor` / :func:`logdet_factor` token
-    primitives hold numeric factor copies in a per-pattern, value-keyed cache so
-    repeated ``factor`` calls with identical ``Ax`` skip the refactor. When the
-    cache would exceed ``n`` slots, the oldest slot is evicted and any
-    outstanding token referencing it becomes stale (its next
-    :func:`solve_factor` / :func:`logdet_factor` call raises). The token-based
-    API is the recommended path when guaranteed reuse is needed — hold the
-    token — so this cap mostly bounds memory when many distinct ``Ax`` values
-    are factored against the same pattern without holding tokens.
+    Every CHOLMOD call — :func:`solve`, :func:`logdet`, :func:`factor_solve`,
+    :func:`factor` and the rest — takes its factor from a per-pattern cache keyed
+    on ``Ax``, so a repeated call with identical values skips the factorization.
+    When the cache is full the oldest entry is evicted. A token from
+    :func:`factor` holds its own reference, so eviction never invalidates it;
+    only :func:`clear_cache` does. Each entry is a whole Cholesky factor, so the
+    cap bounds memory.
     """
     _cpp.set_num_cache_size(int(n))
 
