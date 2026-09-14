@@ -90,7 +90,11 @@ jobs:
       # gates behind its `gpl` feature since Modify/MatrixOps/Supernodal are
       # GPL-licensed (this also pulls in MatrixOps and Supernodal, which
       # apt/Homebrew's suitesparse packages build unconditionally but vcpkg
-      # treats as opt-in).
+      # treats as opt-in). UMFPACK is GPL as well and comes in under the same
+      # `gpl` feature; on every other platform it ships in the same
+      # suitesparse / suitesparse-devel / libsuitesparse-dev package that
+      # supplies CHOLMOD and KLU, so no separate install step is needed. A
+      # missing-UMFPACK configure error points here first.
       #
       # vcpkg's internal msys2 bootstrap hardcodes specific msys2 package
       # versions (e.g. autoconf2.71-2.71-3-any) that have been removed from

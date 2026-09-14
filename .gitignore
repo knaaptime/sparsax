@@ -105,3 +105,5 @@ ENV/
 **.ruff_cache/
 
 **.pytest_cache
+
+docs/source/generated/
