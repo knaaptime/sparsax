@@ -1,0 +1,6 @@
+﻿sparsax.set\_umf\_cache\_size
+=============================
+
+.. currentmodule:: sparsax
+
+.. autofunction:: set_umf_cache_size

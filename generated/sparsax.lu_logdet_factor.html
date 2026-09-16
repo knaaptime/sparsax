@@ -1065,6 +1065,54 @@
   
   
     <li class="md-nav__item">
+      <a href="../api.html#sparse-lu-umfpack" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>Sparse LU <wbr>(UMFPACK)</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api.html#umfpack-factor-tokens" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>UMFPACK factor tokens</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api.html#solve-modes" class="md-nav__link">
         
   
@@ -1310,7 +1358,7 @@
 <h1 id="sparsax-lu-logdet-factor">sparsax.lu_logdet_factor<a class="headerlink" href="#sparsax-lu-logdet-factor" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.lu_logdet_factor">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">lu_logdet_factor</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_logdet_factor.token" title="sparsax.lu_logdet_factor.token (Python parameter) — Factor from lu_factor()."><span class="n"><span class="pre">token</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L659-L681"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.lu_logdet_factor" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">lu_logdet_factor</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_logdet_factor.token" title="sparsax.lu_logdet_factor.token (Python parameter) — Factor from lu_factor()."><span class="n"><span class="pre">token</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L715-L737"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.lu_logdet_factor" title="Link to this definition">¶</a></dt>
 <dd><p>Return <code class="docutils literal notranslate"><span class="pre">log|det(A)|</span></code> from a pre-computed KLU factor (no refactor).</p>
 <p>Reads the <code class="docutils literal notranslate"><span class="pre">U</span></code> diagonal from the factor held in <code class="docutils literal notranslate"><span class="pre">token</span></code> (from
 <code class="xref py py-func docutils literal notranslate"><span class="pre">lu_factor`()</span></code>); <code class="docutils literal notranslate"><span class="pre">O(n)</span></code> cost. Forward-only (no autodiff).</p>

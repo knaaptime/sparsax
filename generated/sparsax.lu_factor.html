@@ -1101,6 +1101,54 @@
   
   
     <li class="md-nav__item">
+      <a href="../api.html#sparse-lu-umfpack" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>Sparse LU <wbr>(UMFPACK)</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api.html#umfpack-factor-tokens" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>UMFPACK factor tokens</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api.html#solve-modes" class="md-nav__link">
         
   
@@ -1382,7 +1430,7 @@
 <h1 id="sparsax-lu-factor">sparsax.lu_factor<a class="headerlink" href="#sparsax-lu-factor" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.lu_factor">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">lu_factor</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_factor.Ai" title="sparsax.lu_factor.Ai (Python parameter) — [n_nz] int32 — COO row/column indices (full matrix)."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_factor.Aj" title="sparsax.lu_factor.Aj (Python parameter) — [n_nz] int32 — COO row/column indices (full matrix)."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_factor.Ax" title="sparsax.lu_factor.Ax (Python parameter) — [n_nz] float64 — COO values."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_factor.n" title="sparsax.lu_factor.n (Python parameter) — matrix dimension (static Python int)."><span class="n"><span class="pre">n</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L541-L576"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.lu_factor" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">lu_factor</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_factor.Ai" title="sparsax.lu_factor.Ai (Python parameter) — [n_nz] int32 — COO row/column indices (full matrix)."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_factor.Aj" title="sparsax.lu_factor.Aj (Python parameter) — [n_nz] int32 — COO row/column indices (full matrix)."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_factor.Ax" title="sparsax.lu_factor.Ax (Python parameter) — [n_nz] float64 — COO values."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_factor.n" title="sparsax.lu_factor.n (Python parameter) — matrix dimension (static Python int)."><span class="n"><span class="pre">n</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L597-L632"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.lu_factor" title="Link to this definition">¶</a></dt>
 <dd><p>Factor general (non-symmetric) <code class="docutils literal notranslate"><span class="pre">A</span></code> once via KLU, return a token.</p>
 <p>The non-symmetric counterpart of <a class="reference internal" href="sparsax.factor.html#sparsax.factor" title="sparsax.factor (Python function) — Factor SPD A once, returning a reusable factor token."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor()</span></code></a>. The token is an opaque
 <code class="docutils literal notranslate"><span class="pre">int64[2]</span></code> array carrying a strong reference to a KLU numeric factor held

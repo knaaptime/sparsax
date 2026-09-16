@@ -1,0 +1,6 @@
+﻿sparsax.umf\_factor
+===================
+
+.. currentmodule:: sparsax
+
+.. autofunction:: umf_factor

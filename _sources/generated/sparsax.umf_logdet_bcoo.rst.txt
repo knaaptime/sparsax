@@ -1,0 +1,6 @@
+﻿sparsax.umf\_logdet\_bcoo
+=========================
+
+.. currentmodule:: sparsax
+
+.. autofunction:: umf_logdet_bcoo

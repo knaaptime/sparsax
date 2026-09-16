@@ -1,0 +1,6 @@
+﻿sparsax.umf\_logdet\_factor
+===========================
+
+.. currentmodule:: sparsax
+
+.. autofunction:: umf_logdet_factor

@@ -941,7 +941,7 @@
       <span aria-label="Python function" class="objinfo-icon objinfo-icon__procedure" title="Python function">F</span>
     
     <span class="md-ellipsis">
-      <span title="sparsax.set_num_cache_size (Python function) — Cap the value-keyed numeric-factor cache per CHOLMOD pattern."><span>sparsax.<wbr>set_<wbr>num_<wbr>cache_<wbr>size</span></span>
+      <span title="sparsax.set_num_cache_size (Python function) — Cap the value-keyed numeric-factor cache per CHOLMOD pattern (default 8)."><span>sparsax.<wbr>set_<wbr>num_<wbr>cache_<wbr>size</span></span>
     </span>
   </a>
   
@@ -1003,6 +1003,54 @@
   
   <span class="md-ellipsis">
     <span>KLU factor tokens</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api.html#sparse-lu-umfpack" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>Sparse LU <wbr>(UMFPACK)</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api.html#umfpack-factor-tokens" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>UMFPACK factor tokens</span>
     
   </span>
   
@@ -1189,7 +1237,7 @@
       <span aria-label="Python function" class="objinfo-icon objinfo-icon__procedure" title="Python function">F</span>
     
     <span class="md-ellipsis">
-      <span title="sparsax.set_num_cache_size (Python function) — Cap the value-keyed numeric-factor cache per CHOLMOD pattern."><span>sparsax.<wbr>set_<wbr>num_<wbr>cache_<wbr>size</span></span>
+      <span title="sparsax.set_num_cache_size (Python function) — Cap the value-keyed numeric-factor cache per CHOLMOD pattern (default 8)."><span>sparsax.<wbr>set_<wbr>num_<wbr>cache_<wbr>size</span></span>
     </span>
   </a>
   
@@ -1222,17 +1270,15 @@
 <h1 id="sparsax-set-num-cache-size">sparsax.set_num_cache_size<a class="headerlink" href="#sparsax-set-num-cache-size" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.set_num_cache_size">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">set_num_cache_size</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.set_num_cache_size" title="sparsax.set_num_cache_size.n (Python parameter)"><span class="n"><span class="pre">n</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L695-L708"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.set_num_cache_size" title="Link to this definition">¶</a></dt>
-<dd><p>Cap the value-keyed numeric-factor cache per CHOLMOD pattern.</p>
-<p>The <a class="reference internal" href="sparsax.factor.html#sparsax.factor" title="sparsax.factor (Python function) — Factor SPD A once, returning a reusable factor token."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor()</span></code></a> / <a class="reference internal" href="sparsax.solve_factor.html#sparsax.solve_factor" title="sparsax.solve_factor (Python function) — Solve A x = b using a pre-computed factor (no refactor)."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve_factor()</span></code></a> / <a class="reference internal" href="sparsax.logdet_factor.html#sparsax.logdet_factor" title="sparsax.logdet_factor (Python function) — Return log|A| from a pre-computed factor (no refactor)."><code class="xref py py-func docutils literal notranslate"><span class="pre">logdet_factor()</span></code></a> token
-primitives hold numeric factor copies in a per-pattern, value-keyed cache so
-repeated <code class="docutils literal notranslate"><span class="pre">factor</span></code> calls with identical <code class="docutils literal notranslate"><span class="pre">Ax</span></code> skip the refactor. When the
-cache would exceed <code class="docutils literal notranslate"><span class="pre">n</span></code> slots, the oldest slot is evicted and any
-outstanding token referencing it becomes stale (its next
-<a class="reference internal" href="sparsax.solve_factor.html#sparsax.solve_factor" title="sparsax.solve_factor (Python function) — Solve A x = b using a pre-computed factor (no refactor)."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve_factor()</span></code></a> / <a class="reference internal" href="sparsax.logdet_factor.html#sparsax.logdet_factor" title="sparsax.logdet_factor (Python function) — Return log|A| from a pre-computed factor (no refactor)."><code class="xref py py-func docutils literal notranslate"><span class="pre">logdet_factor()</span></code></a> call raises). The token-based
-API is the recommended path when guaranteed reuse is needed — hold the
-token — so this cap mostly bounds memory when many distinct <code class="docutils literal notranslate"><span class="pre">Ax</span></code> values
-are factored against the same pattern without holding tokens.</p>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">set_num_cache_size</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.set_num_cache_size" title="sparsax.set_num_cache_size.n (Python parameter)"><span class="n"><span class="pre">n</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L1097-L1108"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.set_num_cache_size" title="Link to this definition">¶</a></dt>
+<dd><p>Cap the value-keyed numeric-factor cache per CHOLMOD pattern (default 8).</p>
+<p>Every CHOLMOD call — <a class="reference internal" href="sparsax.solve.html#sparsax.solve" title="sparsax.solve (Python function) — Solve A x = b for symmetric positive definite sparse A."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve()</span></code></a>, <a class="reference internal" href="sparsax.logdet.html#sparsax.logdet" title="sparsax.logdet (Python function) — Log-determinant of a symmetric positive definite sparse matrix."><code class="xref py py-func docutils literal notranslate"><span class="pre">logdet()</span></code></a>, <a class="reference internal" href="sparsax.factor_solve.html#sparsax.factor_solve" title="sparsax.factor_solve (Python function) — Factor A once, then run several solve chains from that one factor."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor_solve()</span></code></a>,
+<a class="reference internal" href="sparsax.factor.html#sparsax.factor" title="sparsax.factor (Python function) — Factor SPD A once, returning a reusable factor token."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor()</span></code></a> and the rest — takes its factor from a per-pattern cache keyed
+on <code class="docutils literal notranslate"><span class="pre">Ax</span></code>, so a repeated call with identical values skips the factorization.
+When the cache is full the oldest entry is evicted. A token from
+<a class="reference internal" href="sparsax.factor.html#sparsax.factor" title="sparsax.factor (Python function) — Factor SPD A once, returning a reusable factor token."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor()</span></code></a> holds its own reference, so eviction never invalidates it;
+only <a class="reference internal" href="sparsax.clear_cache.html#sparsax.clear_cache" title="sparsax.clear_cache (Python function) — Free all cached symbolic analyses and factorizations."><code class="xref py py-func docutils literal notranslate"><span class="pre">clear_cache()</span></code></a> does. Each entry is a whole Cholesky factor, so the
+cap bounds memory.</p>
 </dd></dl>
 
 

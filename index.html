@@ -539,6 +539,16 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#two-lu-backends-klu-vs-umfpack" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Two LU backends:<wbr> KLU vs UMFPACK</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#how-it-works" class="md-nav__link">
     
     <span class="md-ellipsis">
@@ -588,6 +598,16 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#license" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>License</span>
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -617,9 +637,10 @@
 <h1 id="sparsax">sparsax<a class="headerlink" href="#sparsax" title="Link to this heading">¶</a></h1>
 <p>JAX &amp; PyTensor-native sparse direct solvers backed by <a class="reference external" href="https://github.com/DrTimothyAldenDavis/SuiteSparse">SuiteSparse</a>.
 <code class="docutils literal notranslate"><span class="pre">solve</span></code>, <code class="docutils literal notranslate"><span class="pre">logdet</span></code>, and friends are <a class="reference external" href="https://docs.jax.dev/en/latest/ffi.html">XLA FFI</a> custom
-calls into <strong>CHOLMOD</strong> (Cholesky, for symmetric positive definite matrices) and <strong>KLU</strong> (LU,
-for general non-symmetric matrices), so sparse factorizations run at full native speed
-<strong>inside <code class="docutils literal notranslate"><span class="pre">&#64;jax.jit</span></code></strong> (and <code class="docutils literal notranslate"><span class="pre">lax.scan</span></code> / <code class="docutils literal notranslate"><span class="pre">lax.fori_loop</span></code>) — no Python callback overhead.</p>
+calls into <strong>CHOLMOD</strong> (Cholesky, for symmetric positive definite matrices) and <strong>KLU</strong> and
+<strong>UMFPACK</strong> (LU, for general non-symmetric matrices), so sparse factorizations run at full
+native speed <strong>inside <code class="docutils literal notranslate"><span class="pre">&#64;jax.jit</span></code></strong> (and <code class="docutils literal notranslate"><span class="pre">lax.scan</span></code> / <code class="docutils literal notranslate"><span class="pre">lax.fori_loop</span></code>) — no Python callback
+overhead.</p>
 <h2 id="why">Why?<a class="headerlink" href="#why" title="Link to this heading">¶</a></h2>
 <p>No open-source JIT framework (JAX, PyTorch, TensorFlow) exposes a sparse direct factorization
 as a compilable primitive. For iterative workloads that factorize the same sparsity pattern
@@ -639,18 +660,24 @@ than <code class="docutils literal notranslate"><span class="pre">scipy.sparse.l
 <code class="docutils literal notranslate"><span class="pre">A</span></code>.</p></li>
 <li><p><strong>KLU</strong> — <code class="docutils literal notranslate"><span class="pre">lu_solve</span></code>, <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code>, <code class="docutils literal notranslate"><span class="pre">lu_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">lu_solve_factor</span></code> for general
 non-symmetric <code class="docutils literal notranslate"><span class="pre">A</span></code> (e.g. <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">=</span> <span class="pre">I</span> <span class="pre">−</span> <span class="pre">ρW</span></code> with a row-standardised spatial weights matrix).</p></li>
+<li><p><strong>UMFPACK</strong> — <code class="docutils literal notranslate"><span class="pre">umf_solve</span></code>, <code class="docutils literal notranslate"><span class="pre">umf_logdet</span></code>, <code class="docutils literal notranslate"><span class="pre">umf_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">umf_solve_factor</span></code>: the same API
+over SuiteSparse’s multifrontal LU, for the same non-symmetric <code class="docutils literal notranslate"><span class="pre">A</span></code>. The two LU backends are
+interchangeable and differ only in which graph they are fast on — see
+<em>Two LU backends: KLU vs UMFPACK</em> below.</p></li>
 <li><p><strong>JIT / <code class="docutils literal notranslate"><span class="pre">lax.scan</span></code></strong>: the symbolic analysis is computed once and reused across iterations.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">vmap</span></code></strong>: <code class="docutils literal notranslate"><span class="pre">jax.vmap(solve)</span></code> lowers to a <em>single</em> native FFI call that loops over the
 batch in C++ (reusing the cached analysis), rather than XLA per-iteration dispatch.
 Composes with <code class="docutils literal notranslate"><span class="pre">grad</span></code> (<code class="docutils literal notranslate"><span class="pre">vmap(grad(solve))</span></code> batches too).</p></li>
 <li><p><strong>Autodiff</strong>: <code class="docutils literal notranslate"><span class="pre">solve</span></code> has a custom reverse-mode VJP in both <code class="docutils literal notranslate"><span class="pre">Ax</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span></code>; <code class="docutils literal notranslate"><span class="pre">logdet</span></code> has one
 in <code class="docutils literal notranslate"><span class="pre">Ax</span></code> via the selected inverse. <code class="docutils literal notranslate"><span class="pre">lu_solve</span></code> is differentiable in <code class="docutils literal notranslate"><span class="pre">Ax</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span></code> (transpose
-solve); <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code> is forward-only. Together <code class="docutils literal notranslate"><span class="pre">solve</span></code>/<code class="docutils literal notranslate"><span class="pre">logdet</span></code> give the gradient of a
+solve), as is <code class="docutils literal notranslate"><span class="pre">umf_solve</span></code>; <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code> and <code class="docutils literal notranslate"><span class="pre">umf_logdet</span></code> are forward-only. Together
+<code class="docutils literal notranslate"><span class="pre">solve</span></code>/<code class="docutils literal notranslate"><span class="pre">logdet</span></code> give the gradient of a
 Gaussian log-density, so a precision matrix’s values can be fit by HMC/NUTS, VI, or
 empirical-Bayes optimization.</p></li>
-<li><p><strong>Factor-once primitives</strong> — <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> / <code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code> (CHOLMOD) and
-<code class="docutils literal notranslate"><span class="pre">lu_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">lu_solve_factor</span></code> (KLU) factorize once and serve an unbounded sequence of
-solves against the same factor, inside <code class="docutils literal notranslate"><span class="pre">lax.fori_loop</span></code> and under <code class="docutils literal notranslate"><span class="pre">vmap</span></code>.</p></li>
+<li><p><strong>Factor-once primitives</strong> — <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> / <code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code> (CHOLMOD), <code class="docutils literal notranslate"><span class="pre">lu_factor</span></code> /
+<code class="docutils literal notranslate"><span class="pre">lu_solve_factor</span></code> (KLU), and <code class="docutils literal notranslate"><span class="pre">umf_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">umf_solve_factor</span></code> (UMFPACK) factorize once and
+serve an unbounded sequence of solves against the same factor, inside <code class="docutils literal notranslate"><span class="pre">lax.fori_loop</span></code> and
+under <code class="docutils literal notranslate"><span class="pre">vmap</span></code>.</p></li>
 <li><p><strong>Multiple right-hand sides</strong>: <code class="docutils literal notranslate"><span class="pre">b</span></code> may be <code class="docutils literal notranslate"><span class="pre">(n,)</span></code> or <code class="docutils literal notranslate"><span class="pre">(n,</span> <span class="pre">n_rhs)</span></code>.</p></li>
 <li><p><strong>PyMC / PyTensor</strong> frontend (optional extra) for the same CHOLMOD core, so PyMC’s default
 NUTS sampler can differentiate through the sparse solve and log-determinant without going
@@ -724,16 +751,97 @@ computed once and cached, and under <code class="docutils literal notranslate"><
 call. <code class="docutils literal notranslate"><span class="pre">lu_solve</span></code> is differentiable in <code class="docutils literal notranslate"><span class="pre">Ax</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span></code> (transpose solve); <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code> is forward-only
 (the non-symmetric logdet gradient is the full selected inverse, which KLU does not expose —
 use <code class="docutils literal notranslate"><span class="pre">logdet</span></code> for symmetric <code class="docutils literal notranslate"><span class="pre">A</span></code> when a gradient is needed).</p>
+<h2 id="two-lu-backends-klu-vs-umfpack">Two LU backends: KLU vs UMFPACK<a class="headerlink" href="#two-lu-backends-klu-vs-umfpack" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">umf_*</span></code> mirrors <code class="docutils literal notranslate"><span class="pre">lu_*</span></code> function for function — same arguments, same results, same JIT / <code class="docutils literal notranslate"><span class="pre">vmap</span></code> /
+autodiff behaviour — over SuiteSparse <strong>UMFPACK</strong> instead of KLU:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">umf_solve</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>       <span class="c1"># drop-in for lu_solve</span>
+<span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">umf_logdet</span><span class="p">(</span><span class="n">Ai</span><span class="p">,</span> <span class="n">Aj</span><span class="p">,</span> <span class="n">Ax</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>    <span class="c1"># log|det(A)|, from get_determinant</span>
+</code></pre></div>
+</div>
+<p>They differ only in which graph they are fast on, and the difference runs both ways:</p>
+<ul class="simple">
+<li><p><strong>KLU</strong> has a third stage UMFPACK lacks — <code class="docutils literal notranslate"><span class="pre">klu_analyze</span></code> → <code class="docutils literal notranslate"><span class="pre">klu_factor</span></code> → <strong><code class="docutils literal notranslate"><span class="pre">klu_refactor</span></code></strong> —
+whose refactor reuses the symbolic analysis <em>and the pivot ordering</em>, so a refactor at a new
+ρ is pure numeric work. That saves 74–86% of a full factorization while the graph is sparse.</p></li>
+<li><p><strong>UMFPACK</strong> re-pivots inside every <code class="docutils literal notranslate"><span class="pre">numeric()</span></code> call (it is multifrontal with partial
+pivoting, so the pivot sequence depends on the values), but it is frontal and uses BLAS3
+where KLU is a scalar circuit-simulation code with no supernodal path. Once fronts get wide,
+that wins by a lot.</p></li>
+</ul>
+<p>Measured through <code class="docutils literal notranslate"><span class="pre">sparsax</span></code> on row-standardised distance-band graphs at <em>n</em> = 3,000, timing
+<code class="docutils literal notranslate"><span class="pre">logdet</span></code> over 12 values of ρ on one pattern:</p>
+<table class="docutils data align-default">
+<thead>
+<tr class="row-odd"><th class="head text-right"><p>mean degree</p></th>
+<th class="head text-right"><p>nnz</p></th>
+<th class="head text-right"><p><code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code> (ms)</p></th>
+<th class="head text-right"><p><code class="docutils literal notranslate"><span class="pre">umf_logdet</span></code> (ms)</p></th>
+<th class="head text-left"><p>winner</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>2.0</p></td>
+<td class="text-right"><p>9,134</p></td>
+<td class="text-right"><p><strong>0.37</strong></p></td>
+<td class="text-right"><p>0.79</p></td>
+<td class="text-left"><p>KLU, 2.1×</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>7.9</p></td>
+<td class="text-right"><p>26,662</p></td>
+<td class="text-right"><p><strong>1.03</strong></p></td>
+<td class="text-right"><p>2.77</p></td>
+<td class="text-left"><p>KLU, 2.7×</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>21.2</p></td>
+<td class="text-right"><p>66,750</p></td>
+<td class="text-right"><p>7.35</p></td>
+<td class="text-right"><p><strong>6.15</strong></p></td>
+<td class="text-left"><p>UMFPACK, 1.2×</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>65.2</p></td>
+<td class="text-right"><p>198,726</p></td>
+<td class="text-right"><p>48.10</p></td>
+<td class="text-right"><p><strong>15.12</strong></p></td>
+<td class="text-left"><p>UMFPACK, 3.2×</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>160.0</p></td>
+<td class="text-right"><p>483,092</p></td>
+<td class="text-right"><p>154.19</p></td>
+<td class="text-right"><p><strong>85.03</strong></p></td>
+<td class="text-left"><p>UMFPACK, 1.8×</p></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<div><p><strong>Route by measurement, not by a threshold.</strong> The crossover <strong>moves with <em>n</em></strong> — mean degree
+≈30 at <em>n</em> = 1,500 falling to ≈15 at <em>n</em> = 12,000 — so a hardcoded cutoff is wrong at both
+ends. A factorization is being computed anyway: time one with each backend and route on the
+result. The probe costs roughly 5–10% of a ρ-node budget, and it is dearest exactly where the
+choice matters least.</p>
+</div></blockquote>
+<p>One further asymmetry: <code class="docutils literal notranslate"><span class="pre">umf_logdet</span></code> reads the determinant straight out of
+<code class="docutils literal notranslate"><span class="pre">umfpack_*_get_determinant</span></code>, in mantissa/exponent form (<code class="docutils literal notranslate"><span class="pre">det</span> <span class="pre">=</span> <span class="pre">Mx</span> <span class="pre">·</span> <span class="pre">10^Ex</span></code>). KLU exposes no
+equivalent, so <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code> reconstructs it from <code class="docutils literal notranslate"><span class="pre">U</span></code>’s diagonal and the row scale factors as a
+sum of <em>n</em> logarithms. Both are overflow-safe and agree to ~13 digits; UMFPACK’s is the more
+accurate of the two at large <em>n</em>, since it does not accumulate rounding over <em>n</em> terms
+(at <em>n</em> = 4,000 with <code class="docutils literal notranslate"><span class="pre">det</span> <span class="pre">=</span> <span class="pre">1e4000</span></code>, UMFPACK is exact to printed precision and the log-sum
+drifts by ~3e-14 relative). Neither LU logdet is differentiable — that gradient is the full
+selected inverse, which neither backend exposes.</p>
+<p>Iterative refinement is <strong>off</strong> on the UMFPACK path (its own default is two steps), so an
+<code class="docutils literal notranslate"><span class="pre">umf_solve</span></code> costs the same triangular work as its KLU counterpart and the two can be timed
+against each other fairly.</p>
 <h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code> (and their <code class="docutils literal notranslate"><span class="pre">lu_*</span></code> counterparts) are XLA FFI custom calls into CHOLMOD and
-KLU. The extension caches symbolic analyses keyed on the sparsity pattern, so repeated calls
+<p><code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code> (and their <code class="docutils literal notranslate"><span class="pre">lu_*</span></code> / <code class="docutils literal notranslate"><span class="pre">umf_*</span></code> counterparts) are XLA FFI custom calls into
+CHOLMOD, KLU, and UMFPACK. Each backend keeps its own registry of symbolic analyses keyed on the
+sparsity pattern, so repeated calls
 with the same pattern only pay for the numeric refactorization — and calls with unchanged
 values skip even that, sharing one factorization between <code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code>. There are no
 handles to manage and nothing to pass through JIT boundaries; the caching is transparent.</p>
 <p>For the “hold a numeric factor open” case — e.g. a shift-invert Krylov basis that reuses one
 factorization across an unbounded sequence of solves whose RHS depends on the previous solve’s
-output — <code class="docutils literal notranslate"><span class="pre">factor</span></code> / <code class="docutils literal notranslate"><span class="pre">solve_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">logdet_factor</span></code> (CHOLMOD) and <code class="docutils literal notranslate"><span class="pre">lu_factor</span></code> /
-<code class="docutils literal notranslate"><span class="pre">lu_solve_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">lu_logdet_factor</span></code> (KLU) return an opaque token carrying a strong reference
+output — <code class="docutils literal notranslate"><span class="pre">factor</span></code> / <code class="docutils literal notranslate"><span class="pre">solve_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">logdet_factor</span></code> (CHOLMOD), <code class="docutils literal notranslate"><span class="pre">lu_factor</span></code> /
+<code class="docutils literal notranslate"><span class="pre">lu_solve_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">lu_logdet_factor</span></code> (KLU), and <code class="docutils literal notranslate"><span class="pre">umf_factor</span></code> / <code class="docutils literal notranslate"><span class="pre">umf_solve_factor</span></code> /
+<code class="docutils literal notranslate"><span class="pre">umf_logdet_factor</span></code> (UMFPACK) return an opaque token carrying a strong reference
 to the numeric factor, guaranteeing reuse inside <code class="docutils literal notranslate"><span class="pre">lax.fori_loop</span></code> without relying on a host-side
 cache surviving JIT-compiled iterations.</p>
 <h2 id="factor-once-do-everything-factor-solve-sample-gaussian">Factor once, do everything: <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> / <code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code><a class="headerlink" href="#factor-once-do-everything-factor-solve-sample-gaussian" title="Link to this heading">¶</a></h2>
@@ -786,8 +894,9 @@ never the dense inverse. That quantity is exposed directly:</p>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">selinv</span></code> shares the factorization cache, is JIT-compilable and <code class="docutils literal notranslate"><span class="pre">vmap</span></code>-able, and costs one
 selected-inversion pass over the factor (<code class="docutils literal notranslate"><span class="pre">O(nnz(L))</span></code>-ish), not <code class="docutils literal notranslate"><span class="pre">n</span></code> solves. <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> /
-<code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code> remain forward-only. <code class="docutils literal notranslate"><span class="pre">lu_solve</span></code> carries the analogous reverse-mode rule (a
-transpose solve for the VJP); <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code> is not differentiable.</p>
+<code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code> remain forward-only. <code class="docutils literal notranslate"><span class="pre">lu_solve</span></code> and <code class="docutils literal notranslate"><span class="pre">umf_solve</span></code> carry the analogous
+reverse-mode rule (a transpose solve for the VJP); neither <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code> nor <code class="docutils literal notranslate"><span class="pre">umf_logdet</span></code> is
+differentiable.</p>
 <h2 id="pymc-pytensor-nuts">PyMC / PyTensor (NUTS)<a class="headerlink" href="#pymc-pytensor-nuts" title="Link to this heading">¶</a></h2>
 <p>The same CHOLMOD core is exposed as a <strong>PyTensor</strong> frontend for PyMC’s default backend, so
 gradient-based samplers (NUTS) can differentiate through the sparse solve and log-determinant
@@ -816,7 +925,7 @@ to the JAX frontend above if you deliberately run PyMC’s JAX/numba linker.</p>
 </div></blockquote>
 <h2 id="jax-sparse-bcoo">JAX sparse (<code class="docutils literal notranslate"><span class="pre">BCOO</span></code>)<a class="headerlink" href="#jax-sparse-bcoo" title="Link to this heading">¶</a></h2>
 <p>JAX’s native sparse type is <code class="docutils literal notranslate"><span class="pre">jax.experimental.sparse.BCOO</span></code>, whose <code class="docutils literal notranslate"><span class="pre">.indices</span></code> is <code class="docutils literal notranslate"><span class="pre">(nnz,</span> <span class="pre">2)</span></code> and
-<code class="docutils literal notranslate"><span class="pre">.data</span></code> is <code class="docutils literal notranslate"><span class="pre">(nnz,)</span></code>. Convenience wrappers accept one directly (CHOLMOD and KLU alike):</p>
+<code class="docutils literal notranslate"><span class="pre">.data</span></code> is <code class="docutils literal notranslate"><span class="pre">(nnz,)</span></code>. Convenience wrappers accept one directly (every backend alike):</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">jax.experimental</span><span class="w"> </span><span class="kn">import</span> <span class="n">sparse</span> <span class="k">as</span> <span class="n">jsparse</span>
 <span class="n">A</span> <span class="o">=</span> <span class="n">jsparse</span><span class="o">.</span><span class="n">BCOO</span><span class="o">.</span><span class="n">fromdense</span><span class="p">(</span><span class="n">A_dense</span><span class="p">)</span>         <span class="c1"># or build however you like</span>
 
@@ -828,8 +937,31 @@ to the JAX frontend above if you deliberately run PyMC’s JAX/numba linker.</p>
 <span class="c1"># KLU</span>
 <span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">lu_solve_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
 <span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">lu_logdet_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
+
+<span class="c1"># UMFPACK</span>
+<span class="n">x</span>  <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">umf_solve_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+<span class="n">ld</span> <span class="o">=</span> <span class="n">sparsax</span><span class="o">.</span><span class="n">umf_logdet_bcoo</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
 </code></pre></div>
 </div>
+<h2 id="license">License<a class="headerlink" href="#license" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">sparsax</span></code>’s own source is <strong>BSD-3-Clause</strong> (<code class="docutils literal notranslate"><span class="pre">LICENSE.txt</span></code>).</p>
+<p><strong>Binary distributions are not.</strong> The extension links SuiteSparse, and parts of
+SuiteSparse are <strong>GPL-2.0-or-later</strong> — UMFPACK in full, plus CHOLMOD’s MatrixOps,
+Modify, and Supernodal modules. The wheels on PyPI, the conda-forge package, and
+anything you build yourself are combined works that bundle that code, so
+<strong>redistributing a built <code class="docutils literal notranslate"><span class="pre">sparsax</span></code> carries GPL obligations</strong>, not just BSD ones.
+BSD-3-Clause is GPL-compatible, so making the combination is fine — but the result
+is not permissive.</p>
+<p>This is not incidental: <code class="docutils literal notranslate"><span class="pre">update_solve</span></code> is built on CHOLMOD’s <code class="docutils literal notranslate"><span class="pre">cholmod_updown</span></code>
+(Modify), CHOLMOD’s default <code class="docutils literal notranslate"><span class="pre">AUTO</span></code> strategy selects the Supernodal factorization,
+and the whole <code class="docutils literal notranslate"><span class="pre">umf_*</span></code> family is UMFPACK.</p>
+<p><em>Using</em> <code class="docutils literal notranslate"><span class="pre">sparsax</span></code> — running it, doing research with it, publishing results — is
+unaffected; the GPL governs distribution, not use. Depending on it from your own
+permissively-licensed source is likewise fine. It matters when you ship a binary
+artifact with SuiteSparse inside it, especially in a proprietary product.</p>
+<p>See <a class="reference internal" href="#NOTICE.md"><span class="xref myst"><code class="docutils literal notranslate"><span class="pre">NOTICE.md</span></code></span></a> for the per-component breakdown and what a
+permissive-only build would cost. None of this is legal advice; if you are
+redistributing commercially, get it checked properly.</p>
 <div class="toctree-wrapper compound">
 </div>
 <div class="toctree-wrapper compound">

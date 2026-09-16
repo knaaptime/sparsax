@@ -1,0 +1,6 @@
+﻿sparsax.umf\_solve
+==================
+
+.. currentmodule:: sparsax
+
+.. autofunction:: umf_solve

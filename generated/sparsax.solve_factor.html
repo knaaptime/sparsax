@@ -1089,6 +1089,54 @@
   
   
     <li class="md-nav__item">
+      <a href="../api.html#sparse-lu-umfpack" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>Sparse LU <wbr>(UMFPACK)</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api.html#umfpack-factor-tokens" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>UMFPACK factor tokens</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api.html#solve-modes" class="md-nav__link">
         
   
@@ -1358,7 +1406,7 @@
 <h1 id="sparsax-solve-factor">sparsax.solve_factor<a class="headerlink" href="#sparsax-solve-factor" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.solve_factor">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">solve_factor</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve_factor.token" title="sparsax.solve_factor.token (Python parameter) — Factor from factor() (an opaque int64[2] array)."><span class="n"><span class="pre">token</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve_factor.b" title="sparsax.solve_factor.b (Python parameter) — [n] or [n, n_rhs] float64 — right-hand side(s)."><span class="n"><span class="pre">b</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve_factor.mode" title="sparsax.solve_factor.mode (Python parameter) — which factor-part system to solve (MODE_A by default), one of the MODE_* constants, matching solve()."><span class="n"><span class="pre">mode</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="mi">0</span></code></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L1074-L1110"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.solve_factor" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">solve_factor</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve_factor.token" title="sparsax.solve_factor.token (Python parameter) — Factor from factor() (an opaque int64[2] array)."><span class="n"><span class="pre">token</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve_factor.b" title="sparsax.solve_factor.b (Python parameter) — [n] or [n, n_rhs] float64 — right-hand side(s)."><span class="n"><span class="pre">b</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve_factor.mode" title="sparsax.solve_factor.mode (Python parameter) — which factor-part system to solve (MODE_A by default), one of the MODE_* constants, matching solve()."><span class="n"><span class="pre">mode</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="mi">0</span></code></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L1474-L1510"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.solve_factor" title="Link to this definition">¶</a></dt>
 <dd><p>Solve <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">x</span> <span class="pre">=</span> <span class="pre">b</span></code> using a pre-computed factor (no refactor).</p>
 <p>Reuses the numeric factor held in <code class="docutils literal notranslate"><span class="pre">token</span></code> (from <a class="reference internal" href="sparsax.factor.html#sparsax.factor" title="sparsax.factor (Python function) — Factor SPD A once, returning a reusable factor token."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor()</span></code></a>); costs
 <code class="docutils literal notranslate"><span class="pre">O(nnz(L)</span> <span class="pre">*</span> <span class="pre">n_rhs)</span></code> triangular solves, no factorization. The factor is not

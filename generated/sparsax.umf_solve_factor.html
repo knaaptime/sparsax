@@ -11,17 +11,17 @@
       
       
       
-        <link rel="prev" href="sparsax.logdet.html">
+        <link rel="prev" href="sparsax.umf_factor.html">
       
       
-        <link rel="next" href="sparsax.factor_solve.html">
+        <link rel="next" href="sparsax.umf_logdet_factor.html">
       
       
       <link rel="icon" href="">
     
     
       
-        <title>sparsax.selinv - sparsax</title>
+        <title>sparsax.umf_solve_factor - sparsax</title>
       
     
     
@@ -72,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#sparsax.selinv" class="md-skip">
+        <a href="#sparsax.umf_solve_factor" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              sparsax.selinv
+              sparsax.umf_solve_factor
             
           </span>
         </div>
@@ -502,31 +502,11 @@
                 
   
   
-    
-  
-    
   
   
   
-    <li class="md-nav__item md-nav__item--active">
-      
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    <span>sparsax.<wbr>selinv</span>
-    
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="#" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="sparsax.selinv.html" class="md-nav__link">
         
   
   
@@ -537,127 +517,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary">
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#sparsax.selinv" class="md-nav__link">
-    
-      <span aria-label="Python function" class="objinfo-icon objinfo-icon__procedure" title="Python function">F</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.selinv (Python function) — Selected inverse: entries of A^{-1} at A&#39;s sparsity pattern."><span>sparsax.<wbr>selinv</span></span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="sparsax.selinv">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.selinv-parameters" class="md-nav__link">
-    
-    <span class="md-ellipsis">
-      <span>Parameters</span>
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Parameters">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.selinv.Ai" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.selinv.Ai (Python parameter) — COO matrix as in solve()."><span>Ai</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.selinv.Aj" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.selinv.Aj (Python parameter) — COO matrix as in solve()."><span>Aj</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.selinv.Ax" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.selinv.Ax (Python parameter) — COO matrix as in solve()."><span>Ax</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.selinv.n" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.selinv.n (Python parameter) — matrix dimension (static Python int)."><span>n</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.selinv-returns" class="md-nav__link">
-    
-    <span class="md-ellipsis">
-      <span>Returns</span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.selinv-return-type" class="md-nav__link">
-    
-    <span class="md-ellipsis">
-      <span>Return type</span>
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1003,12 +862,25 @@
                 
   
   
+    
   
   
   
-    <li class="md-nav__item">
-      <a href="../api.html#umfpack-factor-tokens" class="md-nav__link">
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
         
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_1_1_18" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../api.html#umfpack-factor-tokens" class="md-nav__link ">
+              
   
   
   <span class="md-ellipsis">
@@ -1017,8 +889,242 @@
   </span>
   
 
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_1_1_18" id="__nav_3_1_1_18_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_3_1_1_18_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_1_1_18">
+            <span class="md-nav__icon md-icon"></span>
+            <span>UMFPACK factor tokens</span>
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.umf_factor.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>umf_<wbr>factor</span>
+    
+  </span>
+  
+
       </a>
     </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>umf_<wbr>solve_<wbr>factor</span>
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="#" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>umf_<wbr>solve_<wbr>factor</span>
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary">
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sparsax.umf_solve_factor" class="md-nav__link">
+    
+      <span aria-label="Python function" class="objinfo-icon objinfo-icon__procedure" title="Python function">F</span>
+    
+    <span class="md-ellipsis">
+      <span title="sparsax.umf_solve_factor (Python function) — Solve A x = b (or A^T x = b) using a pre-computed UMFPACK factor."><span>sparsax.<wbr>umf_<wbr>solve_<wbr>factor</span></span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="sparsax.umf_solve_factor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sparsax.umf_solve_factor-parameters" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Parameters</span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Parameters">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sparsax.umf_solve_factor.token" class="md-nav__link">
+    
+      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
+    
+    <span class="md-ellipsis">
+      <span title="sparsax.umf_solve_factor.token (Python parameter) — token from umf_factor() (an opaque int64[2] array)."><span>token</span></span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sparsax.umf_solve_factor.b" class="md-nav__link">
+    
+      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
+    
+    <span class="md-ellipsis">
+      <span title="sparsax.umf_solve_factor.b (Python parameter) — [n] or [n, n_rhs] float64 — right-hand side(s)."><span>b</span></span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sparsax.umf_solve_factor.trans" class="md-nav__link">
+    
+      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
+    
+    <span class="md-ellipsis">
+      <span title="sparsax.umf_solve_factor.trans (Python parameter) — if True, solve A^T x = b (the adjoint); otherwise A x = b."><span>trans</span></span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sparsax.umf_solve_factor-returns" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Returns</span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.umf_logdet_factor.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>umf_<wbr>logdet_<wbr>factor</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.set_umf_cache_size.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>set_<wbr>umf_<wbr>cache_<wbr>size</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
   
 
               
@@ -1194,20 +1300,20 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#sparsax.selinv" class="md-nav__link">
+  <a href="#sparsax.umf_solve_factor" class="md-nav__link">
     
       <span aria-label="Python function" class="objinfo-icon objinfo-icon__procedure" title="Python function">F</span>
     
     <span class="md-ellipsis">
-      <span title="sparsax.selinv (Python function) — Selected inverse: entries of A^{-1} at A&#39;s sparsity pattern."><span>sparsax.<wbr>selinv</span></span>
+      <span title="sparsax.umf_solve_factor (Python function) — Solve A x = b (or A^T x = b) using a pre-computed UMFPACK factor."><span>sparsax.<wbr>umf_<wbr>solve_<wbr>factor</span></span>
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="sparsax.selinv">
+    <nav class="md-nav" aria-label="sparsax.umf_solve_factor">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#sparsax.selinv-parameters" class="md-nav__link">
+  <a href="#sparsax.umf_solve_factor-parameters" class="md-nav__link">
     
     <span class="md-ellipsis">
       <span>Parameters</span>
@@ -1218,48 +1324,36 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#sparsax.selinv.Ai" class="md-nav__link">
+  <a href="#sparsax.umf_solve_factor.token" class="md-nav__link">
     
       <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
     
     <span class="md-ellipsis">
-      <span title="sparsax.selinv.Ai (Python parameter) — COO matrix as in solve()."><span>Ai</span></span>
+      <span title="sparsax.umf_solve_factor.token (Python parameter) — token from umf_factor() (an opaque int64[2] array)."><span>token</span></span>
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#sparsax.selinv.Aj" class="md-nav__link">
+  <a href="#sparsax.umf_solve_factor.b" class="md-nav__link">
     
       <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
     
     <span class="md-ellipsis">
-      <span title="sparsax.selinv.Aj (Python parameter) — COO matrix as in solve()."><span>Aj</span></span>
+      <span title="sparsax.umf_solve_factor.b (Python parameter) — [n] or [n, n_rhs] float64 — right-hand side(s)."><span>b</span></span>
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#sparsax.selinv.Ax" class="md-nav__link">
+  <a href="#sparsax.umf_solve_factor.trans" class="md-nav__link">
     
       <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
     
     <span class="md-ellipsis">
-      <span title="sparsax.selinv.Ax (Python parameter) — COO matrix as in solve()."><span>Ax</span></span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.selinv.n" class="md-nav__link">
-    
-      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
-    
-    <span class="md-ellipsis">
-      <span title="sparsax.selinv.n (Python parameter) — matrix dimension (static Python int)."><span>n</span></span>
+      <span title="sparsax.umf_solve_factor.trans (Python parameter) — if True, solve A^T x = b (the adjoint); otherwise A x = b."><span>trans</span></span>
     </span>
   </a>
   
@@ -1271,20 +1365,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#sparsax.selinv-returns" class="md-nav__link">
+  <a href="#sparsax.umf_solve_factor-returns" class="md-nav__link">
     
     <span class="md-ellipsis">
       <span>Returns</span>
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sparsax.selinv-return-type" class="md-nav__link">
-    
-    <span class="md-ellipsis">
-      <span>Return type</span>
     </span>
   </a>
   
@@ -1312,47 +1396,44 @@
 
 
   
-    <a href="https://github.com/knaaptime/sparsax/blob/main/docs/generated/sparsax.selinv.rst" title="Edit this page" class="md-content__button md-icon">
+    <a href="https://github.com/knaaptime/sparsax/blob/main/docs/generated/sparsax.umf_solve_factor.rst" title="Edit this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 9h5.5L13 3.5zM6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4c0-1.11.89-2 2-2m.12 13.5 3.74 3.74 1.42-1.41-2.33-2.33 2.33-2.33-1.42-1.41zm11.16 0-3.74-3.74-1.42 1.41 2.33 2.33-2.33 2.33 1.42 1.41z"/></svg>
     </a>
   
   
 
-<h1 id="sparsax-selinv">sparsax.selinv<a class="headerlink" href="#sparsax-selinv" title="Link to this heading">¶</a></h1>
+<h1 id="sparsax-umf-solve-factor">sparsax.umf_solve_factor<a class="headerlink" href="#sparsax-umf-solve-factor" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
-<dt class="sig sig-object highlight py" id="sparsax.selinv">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">selinv</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.selinv.Ai" title="sparsax.selinv.Ai (Python parameter) — COO matrix as in solve()."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.selinv.Aj" title="sparsax.selinv.Aj (Python parameter) — COO matrix as in solve()."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.selinv.Ax" title="sparsax.selinv.Ax (Python parameter) — COO matrix as in solve()."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.selinv.n" title="sparsax.selinv.n (Python parameter) — matrix dimension (static Python int)."><span class="n"><span class="pre">n</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L1129-L1156"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.selinv" title="Link to this definition">¶</a></dt>
-<dd><p>Selected inverse: entries of <code class="docutils literal notranslate"><span class="pre">A^{-1}</span></code> at <code class="docutils literal notranslate"><span class="pre">A</span></code>’s sparsity pattern.</p>
-<p>Returns <code class="docutils literal notranslate"><span class="pre">z</span></code> with <code class="docutils literal notranslate"><span class="pre">z[k]</span> <span class="pre">==</span> <span class="pre">(A^{-1})[Ai[k],</span> <span class="pre">Aj[k]]</span></code>, computed by
-Takahashi’s recurrence on the Cholesky factor without ever forming the dense
-inverse. Shares the factorization cache with <a class="reference internal" href="sparsax.solve.html#sparsax.solve" title="sparsax.solve (Python function) — Solve A x = b for symmetric positive definite sparse A."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve()</span></code></a> / <a class="reference internal" href="sparsax.logdet.html#sparsax.logdet" title="sparsax.logdet (Python function) — Log-determinant of a symmetric positive definite sparse matrix."><code class="xref py py-func docutils literal notranslate"><span class="pre">logdet()</span></code></a>.</p>
-<p>This is the quantity <a class="reference internal" href="sparsax.logdet.html#sparsax.logdet" title="sparsax.logdet (Python function) — Log-determinant of a symmetric positive definite sparse matrix."><code class="xref py py-func docutils literal notranslate"><span class="pre">logdet()</span></code></a>’s reverse-mode rule uses
-(<code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">log|A|</span> <span class="pre">/</span> <span class="pre">dA</span> <span class="pre">=</span> <span class="pre">A^{-1}</span></code>), exposed directly because the selected inverse
-is useful on its own — e.g. posterior marginal variances <code class="docutils literal notranslate"><span class="pre">diag(A^{-1})</span></code> of
-a Gaussian with precision <code class="docutils literal notranslate"><span class="pre">A</span></code>, read off the <code class="docutils literal notranslate"><span class="pre">Ai</span> <span class="pre">==</span> <span class="pre">Aj</span></code> entries.</p>
+<dt class="sig sig-object highlight py" id="sparsax.umf_solve_factor">
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">umf_solve_factor</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.umf_solve_factor.token" title="sparsax.umf_solve_factor.token (Python parameter) — token from umf_factor() (an opaque int64[2] array)."><span class="n"><span class="pre">token</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.umf_solve_factor.b" title="sparsax.umf_solve_factor.b (Python parameter) — [n] or [n, n_rhs] float64 — right-hand side(s)."><span class="n"><span class="pre">b</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.umf_solve_factor.trans" title="sparsax.umf_solve_factor.trans (Python parameter) — if True, solve A^T x = b (the adjoint); otherwise A x = b."><span class="n"><span class="pre">trans</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">False</span></code></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L1010-L1043"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.umf_solve_factor" title="Link to this definition">¶</a></dt>
+<dd><p>Solve <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">x</span> <span class="pre">=</span> <span class="pre">b</span></code> (or <code class="docutils literal notranslate"><span class="pre">A^T</span> <span class="pre">x</span> <span class="pre">=</span> <span class="pre">b</span></code>) using a pre-computed UMFPACK factor.</p>
+<p>The UMFPACK counterpart of <a class="reference internal" href="sparsax.lu_solve_factor.html#sparsax.lu_solve_factor" title="sparsax.lu_solve_factor (Python function) — Solve A x = b (or A^T x = b) using a pre-computed KLU factor."><code class="xref py py-func docutils literal notranslate"><span class="pre">lu_solve_factor()</span></code></a>. Reuses the numeric
+factor held in <code class="docutils literal notranslate"><span class="pre">token</span></code> (from <a class="reference internal" href="sparsax.umf_factor.html#sparsax.umf_factor" title="sparsax.umf_factor (Python function) — Factor general (non-symmetric) A once via UMFPACK, return a token."><code class="xref py py-func docutils literal notranslate"><span class="pre">umf_factor()</span></code></a>): triangular solves only,
+no factorization. The factor is not consumed. Forward-only (no autodiff).</p>
 <dl class="field-list simple">
-<dt class="field-odd" id="sparsax.selinv-parameters">Parameters<span class="colon">:</span><a class="headerlink" href="#sparsax.selinv-parameters" title="Permalink to this headline">¶</a></dt>
+<dt class="field-odd" id="sparsax.umf_solve_factor-parameters">Parameters<span class="colon">:</span><a class="headerlink" href="#sparsax.umf_solve_factor-parameters" title="Permalink to this headline">¶</a></dt>
 <dd class="field-odd"><dl class="simple api-field highlight">
-<dt id="sparsax.selinv.Ai"><span class="n sig-name">Ai</span><a class="headerlink" href="#sparsax.selinv.Ai" title="Permalink to this definition">¶</a></dt><dd><p>COO matrix as in <a class="reference internal" href="sparsax.solve.html#sparsax.solve" title="sparsax.solve (Python function) — Solve A x = b for symmetric positive definite sparse A."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve()</span></code></a>.</p>
+<dt id="sparsax.umf_solve_factor.token"><span class="n sig-name">token</span><a class="headerlink" href="#sparsax.umf_solve_factor.token" title="Permalink to this definition">¶</a></dt><dd><p>token from <a class="reference internal" href="sparsax.umf_factor.html#sparsax.umf_factor" title="sparsax.umf_factor (Python function) — Factor general (non-symmetric) A once via UMFPACK, return a token."><code class="xref py py-func docutils literal notranslate"><span class="pre">umf_factor()</span></code></a> (an opaque <code class="docutils literal notranslate"><span class="pre">int64[2]</span></code> array).</p>
 </dd>
-<dt id="sparsax.selinv.Aj"><span class="n sig-name">Aj</span><a class="headerlink" href="#sparsax.selinv.Aj" title="Permalink to this definition">¶</a></dt><dd><p>COO matrix as in <a class="reference internal" href="sparsax.solve.html#sparsax.solve" title="sparsax.solve (Python function) — Solve A x = b for symmetric positive definite sparse A."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve()</span></code></a>.</p>
+<dt id="sparsax.umf_solve_factor.b"><span class="n sig-name">b</span><a class="headerlink" href="#sparsax.umf_solve_factor.b" title="Permalink to this definition">¶</a></dt><dd><p><code class="docutils literal notranslate"><span class="pre">[n]</span></code> or <code class="docutils literal notranslate"><span class="pre">[n,</span> <span class="pre">n_rhs]</span></code> float64 — right-hand side(s).</p>
 </dd>
-<dt id="sparsax.selinv.Ax"><span class="n sig-name">Ax</span><a class="headerlink" href="#sparsax.selinv.Ax" title="Permalink to this definition">¶</a></dt><dd><p>COO matrix as in <a class="reference internal" href="sparsax.solve.html#sparsax.solve" title="sparsax.solve (Python function) — Solve A x = b for symmetric positive definite sparse A."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve()</span></code></a>.</p>
-</dd>
-<dt id="sparsax.selinv.n"><span class="n sig-name">n</span><a class="headerlink" href="#sparsax.selinv.n" title="Permalink to this definition">¶</a></dt><dd><p>matrix dimension (static Python int).</p>
-</dd>
-</dl>
-</dd>
-<dt class="field-even" id="sparsax.selinv-returns">Returns<span class="colon">:</span><a class="headerlink" href="#sparsax.selinv-returns" title="Permalink to this headline">¶</a></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">A^{-1}</span></code> at each COO position.
-Off-diagonal values are symmetric (<code class="docutils literal notranslate"><span class="pre">(A^{-1})[i,</span> <span class="pre">j]</span> <span class="pre">==</span> <span class="pre">(A^{-1})[j,</span> <span class="pre">i]</span></code>),
-so entries below the diagonal carry the same value as their transpose.</p>
-</dd>
-<dt class="field-odd" id="sparsax.selinv-return-type">Return type<span class="colon">:</span><a class="headerlink" href="#sparsax.selinv-return-type" title="Permalink to this headline">¶</a></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">[n_nz]</span></code> float64, aligned with <code class="docutils literal notranslate"><span class="pre">Ax</span></code></p>
+<dt id="sparsax.umf_solve_factor.trans"><span class="n sig-name">trans</span><span class="o">=</span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">False</span></code><a class="headerlink" href="#sparsax.umf_solve_factor.trans" title="Permalink to this definition">¶</a></dt><dd><p>if <code class="docutils literal notranslate"><span class="pre">True</span></code>, solve <code class="docutils literal notranslate"><span class="pre">A^T</span> <span class="pre">x</span> <span class="pre">=</span> <span class="pre">b</span></code> (the adjoint); otherwise
+<code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">x</span> <span class="pre">=</span> <span class="pre">b</span></code>.</p>
 </dd>
 </dl>
+</dd>
+<dt class="field-even" id="sparsax.umf_solve_factor-returns">Returns<span class="colon">:</span><a class="headerlink" href="#sparsax.umf_solve_factor-returns" title="Permalink to this headline">¶</a></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">x</span></code> with the same shape as <code class="docutils literal notranslate"><span class="pre">b</span></code>.</p>
+</dd>
+</dl>
+<div class="note admonition">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">vmap(umf_solve_factor,</span> <span class="pre">in_axes=(None,</span> <span class="pre">0))</span></code> reuses one factor across a
+batch of right-hand sides — the Krylov-recurrence shape (one factor,
+<code class="docutils literal notranslate"><span class="pre">m+1</span></code> solves). <code class="docutils literal notranslate"><span class="pre">vmap(umf_factor)</span></code> then <code class="docutils literal notranslate"><span class="pre">vmap(umf_solve_factor)</span></code>
+(both batched) gives one factor per batch element.</p>
+</div>
 </dd></dl>
 
 

@@ -14,7 +14,7 @@
         <link rel="prev" href="sparsax.lu_logdet_factor.html">
       
       
-        <link rel="next" href="sparsax.MODE_A.html">
+        <link rel="next" href="sparsax.umf_solve.html">
       
       
       <link rel="icon" href="">
@@ -1021,6 +1021,54 @@
   
   
     <li class="md-nav__item">
+      <a href="../api.html#sparse-lu-umfpack" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>Sparse LU <wbr>(UMFPACK)</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api.html#umfpack-factor-tokens" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>UMFPACK factor tokens</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api.html#solve-modes" class="md-nav__link">
         
   
@@ -1222,7 +1270,7 @@
 <h1 id="sparsax-set-lu-cache-size">sparsax.set_lu_cache_size<a class="headerlink" href="#sparsax-set-lu-cache-size" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.set_lu_cache_size">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">set_lu_cache_size</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.set_lu_cache_size" title="sparsax.set_lu_cache_size.n (Python parameter)"><span class="n"><span class="pre">n</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L684-L692"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.set_lu_cache_size" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">set_lu_cache_size</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.set_lu_cache_size" title="sparsax.set_lu_cache_size.n (Python parameter)"><span class="n"><span class="pre">n</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L1075-L1083"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.set_lu_cache_size" title="Link to this definition">¶</a></dt>
 <dd><p>Set how many KLU numeric factors are retained per sparsity pattern.</p>
 <p>The LU factor cache is content-addressed on the COO values. For a vmapped
 factor-once-solve-many sweep to reuse each chain’s factorization across the

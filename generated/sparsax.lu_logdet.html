@@ -1111,6 +1111,54 @@
   
   
     <li class="md-nav__item">
+      <a href="../api.html#sparse-lu-umfpack" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>Sparse LU <wbr>(UMFPACK)</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api.html#umfpack-factor-tokens" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>UMFPACK factor tokens</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api.html#solve-modes" class="md-nav__link">
         
   
@@ -1402,7 +1450,7 @@
 <h1 id="sparsax-lu-logdet">sparsax.lu_logdet<a class="headerlink" href="#sparsax-lu-logdet" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.lu_logdet">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">lu_logdet</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_logdet.Ai" title="sparsax.lu_logdet.Ai (Python parameter) — [n_nz] int32 — COO row/column indices (full matrix, no upper-triangle folding, unlike logdet())."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_logdet.Aj" title="sparsax.lu_logdet.Aj (Python parameter) — [n_nz] int32 — COO row/column indices (full matrix, no upper-triangle folding, unlike logdet())."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_logdet.Ax" title="sparsax.lu_logdet.Ax (Python parameter) — [n_nz] float64 — COO values."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_logdet.n" title="sparsax.lu_logdet.n (Python parameter) — matrix dimension (static Python int)."><span class="n"><span class="pre">n</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L485-L521"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.lu_logdet" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">lu_logdet</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_logdet.Ai" title="sparsax.lu_logdet.Ai (Python parameter) — [n_nz] int32 — COO row/column indices (full matrix, no upper-triangle folding, unlike logdet())."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_logdet.Aj" title="sparsax.lu_logdet.Aj (Python parameter) — [n_nz] int32 — COO row/column indices (full matrix, no upper-triangle folding, unlike logdet())."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_logdet.Ax" title="sparsax.lu_logdet.Ax (Python parameter) — [n_nz] float64 — COO values."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.lu_logdet.n" title="sparsax.lu_logdet.n (Python parameter) — matrix dimension (static Python int)."><span class="n"><span class="pre">n</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.9.0/sparsax/__init__.py#L541-L577"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.lu_logdet" title="Link to this definition">¶</a></dt>
 <dd><p>Log-determinant of a general (non-symmetric) sparse matrix via KLU.</p>
 <p>The non-symmetric counterpart of <a class="reference internal" href="sparsax.logdet.html#sparsax.logdet" title="sparsax.logdet (Python function) — Log-determinant of a symmetric positive definite sparse matrix."><code class="xref py py-func docutils literal notranslate"><span class="pre">logdet()</span></code></a>: computes
 <code class="docutils literal notranslate"><span class="pre">log|det(A)|</span></code> from the KLU factor’s <code class="docutils literal notranslate"><span class="pre">U</span></code> diagonal (plus the row-scale
@@ -1433,7 +1481,7 @@ upper-triangle folding, unlike <a class="reference internal" href="sparsax.logde
 <dd class="field-even"><p>Scalar float64 <code class="docutils literal notranslate"><span class="pre">log(abs(det(A)))</span></code>.</p>
 </dd>
 <dt class="field-odd" id="sparsax.lu_logdet-raises">Raises<span class="colon">:</span><a class="headerlink" href="#sparsax.lu_logdet-raises" title="Permalink to this headline">¶</a></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/exceptions.html#Exception" title="(in Python v3.14)"><strong>Exception</strong></a> – if <code class="docutils literal notranslate"><span class="pre">A</span></code> is singular (a zero or NaN <code class="docutils literal notranslate"><span class="pre">U</span></code> diagonal entry).</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#Exception" title="(in Python v3.14)"><strong>Exception</strong></a> – if <code class="docutils literal notranslate"><span class="pre">A</span></code> is singular (a zero or NaN <code class="docutils literal notranslate"><span class="pre">U</span></code> diagonal entry).</p>
 </dd>
 </dl>
 </dd></dl>
