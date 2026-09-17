@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "sparsax"
-version = "0.9.1"
+version = "0.10.0"
 description = "JAX-native sparse direct solvers via SuiteSparse (CHOLMOD, KLU, UMFPACK)"
 readme = "README.md"
 # sparsax's own source. NOTE: a *built* sparsax links GPL-2.0-or-later
