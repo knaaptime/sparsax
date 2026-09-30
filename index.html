@@ -579,6 +579,16 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#threads" class="md-nav__link">
+    
+    <span class="md-ellipsis">
+      <span>Threads</span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pymc-pytensor-nuts" class="md-nav__link">
     
     <span class="md-ellipsis">
@@ -894,9 +904,20 @@ never the dense inverse. That quantity is exposed directly:</p>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">selinv</span></code> shares the factorization cache, is JIT-compilable and <code class="docutils literal notranslate"><span class="pre">vmap</span></code>-able, and costs one
 selected-inversion pass over the factor (<code class="docutils literal notranslate"><span class="pre">O(nnz(L))</span></code>-ish), not <code class="docutils literal notranslate"><span class="pre">n</span></code> solves. <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> /
-<code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code> remain forward-only. <code class="docutils literal notranslate"><span class="pre">lu_solve</span></code> and <code class="docutils literal notranslate"><span class="pre">umf_solve</span></code> carry the analogous
-reverse-mode rule (a transpose solve for the VJP); neither <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code> nor <code class="docutils literal notranslate"><span class="pre">umf_logdet</span></code> is
-differentiable.</p>
+<code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code> remain forward-only.</p>
+<p><code class="docutils literal notranslate"><span class="pre">solve</span></code>, <code class="docutils literal notranslate"><span class="pre">lu_solve</span></code> and <code class="docutils literal notranslate"><span class="pre">umf_solve</span></code> differentiate by implicit differentiation
+(<code class="docutils literal notranslate"><span class="pre">jax.lax.custom_linear_solve</span></code>): every derivative of <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">x</span> <span class="pre">=</span> <span class="pre">b</span></code> is another solve on the same
+cached factor (a transpose solve for the LU backends), so derivatives of <strong>any order</strong> work in
+forward and reverse mode, including exact Hessians and Hessian-vector products for Newton and
+trust-region methods. <code class="docutils literal notranslate"><span class="pre">logdet</span></code>’s rule is first-order only, and neither <code class="docutils literal notranslate"><span class="pre">lu_logdet</span></code> nor
+<code class="docutils literal notranslate"><span class="pre">umf_logdet</span></code> is differentiable.</p>
+<h2 id="threads">Threads<a class="headerlink" href="#threads" title="Link to this heading">¶</a></h2>
+<p>The native libraries are called without a global lock, so concurrent calls (one per MCMC
+chain, say) run in parallel. The wheels link a multithreaded BLAS (Accelerate on macOS, the
+pthreads build of OpenBLAS on Linux) but no OpenMP runtime, so they cannot clash with the
+OpenMP runtime of another library in the same process. With many concurrent callers, cap BLAS
+threads to avoid oversubscription, e.g. <code class="docutils literal notranslate"><span class="pre">OPENBLAS_NUM_THREADS=1</span></code> on Linux or
+<code class="docutils literal notranslate"><span class="pre">VECLIB_MAXIMUM_THREADS=1</span></code> on macOS.</p>
 <h2 id="pymc-pytensor-nuts">PyMC / PyTensor (NUTS)<a class="headerlink" href="#pymc-pytensor-nuts" title="Link to this heading">¶</a></h2>
 <p>The same CHOLMOD core is exposed as a <strong>PyTensor</strong> frontend for PyMC’s default backend, so
 gradient-based samplers (NUTS) can differentiate through the sparse solve and log-determinant
