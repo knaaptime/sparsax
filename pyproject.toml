@@ -1,10 +1,19 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "nanobind>=2.0", "jax>=0.11"]
+# Build against the *oldest* supported jax, the runtime floor below.  The XLA
+# FFI headers ship with jaxlib and stamp the handler API version into the
+# extension; newer jaxlib accepts older handlers but not newer ones.  Building
+# against the latest jax (0.11.2 exposes FFI API 0.4) broke installs on older
+# jax the metadata allowed (0.11.0 exposes API 0.3).  jax 0.10.0 exposes 0.3 and
+# is on conda-forge.  Raise this pin together with the runtime floor, never
+# alone.
+requires = ["scikit-build-core>=1.1", "setuptools-scm>=8", "nanobind>=2.0", "jax==0.10.0"]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "sparsax"
-version = "0.10.0"
+# The version comes from the git tag (vX.Y.Z) via setuptools-scm; see
+# [tool.setuptools_scm].  Never set it by hand.
+dynamic = ["version"]
 description = "JAX-native sparse direct solvers via SuiteSparse (CHOLMOD, KLU, UMFPACK)"
 readme = "README.md"
 # sparsax's own source. NOTE: a *built* sparsax links GPL-2.0-or-later
@@ -13,7 +22,7 @@ readme = "README.md"
 license = {text = "BSD-3-Clause"}
 requires-python = ">=3.12"
 dependencies = [
-    "jax>=0.11",
+    "jax>=0.10",
     "numpy",
 ]
 
@@ -35,3 +44,9 @@ wheel.license-files = ["LICENSE.txt", "NOTICE.md"]
 # importing sparsax (CHOLMOD, KLU, and UMFPACK are all float64), so imports
 # cannot all sit at the top of the file.
 ignore = ["E402"]
+
+
+[[tool.dynamic-metadata]]
+provider = "scikit_build_core.metadata.setuptools_scm"
+
+[tool.setuptools_scm]

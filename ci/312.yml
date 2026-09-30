@@ -16,7 +16,7 @@ dependencies:
   - pytensor
   - pip
   - pip:
-    - jax >=0.11 # force jax from pip so windows has an installer
+    - jax >=0.10 # force jax from pip so windows has an installer
   # testing
   - jupyter
   - pytest

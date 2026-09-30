@@ -259,9 +259,23 @@ var = z[Ai == Aj]                      # diag(A^-1): Gaussian marginal variances
 
 `selinv` shares the factorization cache, is JIT-compilable and `vmap`-able, and costs one
 selected-inversion pass over the factor (`O(nnz(L))`-ish), not `n` solves. `factor_solve` /
-`sample_gaussian` remain forward-only. `lu_solve` and `umf_solve` carry the analogous
-reverse-mode rule (a transpose solve for the VJP); neither `lu_logdet` nor `umf_logdet` is
-differentiable.
+`sample_gaussian` remain forward-only.
+
+`solve`, `lu_solve` and `umf_solve` differentiate by implicit differentiation
+(`jax.lax.custom_linear_solve`): every derivative of `A x = b` is another solve on the same
+cached factor (a transpose solve for the LU backends), so derivatives of **any order** work in
+forward and reverse mode, including exact Hessians and Hessian-vector products for Newton and
+trust-region methods. `logdet`'s rule is first-order only, and neither `lu_logdet` nor
+`umf_logdet` is differentiable.
+
+## Threads
+
+The native libraries are called without a global lock, so concurrent calls (one per MCMC
+chain, say) run in parallel. The wheels link a multithreaded BLAS (Accelerate on macOS, the
+pthreads build of OpenBLAS on Linux) but no OpenMP runtime, so they cannot clash with the
+OpenMP runtime of another library in the same process. With many concurrent callers, cap BLAS
+threads to avoid oversubscription, e.g. `OPENBLAS_NUM_THREADS=1` on Linux or
+`VECLIB_MAXIMUM_THREADS=1` on macOS.
 
 ## PyMC / PyTensor (NUTS)
 
