@@ -277,6 +277,13 @@ OpenMP runtime of another library in the same process. With many concurrent call
 threads to avoid oversubscription, e.g. `OPENBLAS_NUM_THREADS=1` on Linux or
 `VECLIB_MAXIMUM_THREADS=1` on macOS.
 
+A single solve with many right-hand sides (128 columns or more) is itself split into
+64-column panels solved on every hardware thread, for all three backends;
+`SPARSAX_NUM_THREADS` caps it. The factor is only read, and each worker brings its own
+workspaces. With 4,000 right-hand sides on an `n = 3,600` k-NN system, 16 threads take
+the solve from 0.24 s to 0.018 s (KLU), 0.63 s to 0.061 s (UMFPACK), and 0.21 s / 0.47 s
+to 0.026 s / 0.032 s (CHOLMOD simplicial / supernodal).
+
 ## PyMC / PyTensor (NUTS)
 
 The same CHOLMOD core is exposed as a **PyTensor** frontend for PyMC's default backend, so

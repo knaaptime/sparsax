@@ -114,7 +114,9 @@ def test_hessian_wrt_values_matches_dense(name):
         return jnp.sum(jnp.linalg.solve(_dense(Ai, Aj, Ax, n, upper), b) ** 2)
 
     Ax = jnp.asarray(Ax0)
-    np.testing.assert_allclose(jax.hessian(sparse)(Ax), jax.hessian(dense)(Ax), atol=1e-9)
+    np.testing.assert_allclose(
+        jax.hessian(sparse)(Ax), jax.hessian(dense)(Ax), atol=1e-9
+    )
 
 
 @pytest.mark.parametrize("name", list(CASES))
@@ -137,6 +139,8 @@ def test_nested_vmap(name):
     Axs = jnp.asarray(Ax) * (1 + 0.01 * jnp.arange(4.0))[:, None]
     got = jax.vmap(lambda ax, bs: jax.vmap(lambda bb: fn(Ai, Aj, ax, bb))(bs))(Axs, B)
     want = jax.vmap(
-        lambda ax, bs: jax.vmap(lambda bb: jnp.linalg.solve(_dense(Ai, Aj, ax, n, upper), bb))(bs)
+        lambda ax, bs: jax.vmap(
+            lambda bb: jnp.linalg.solve(_dense(Ai, Aj, ax, n, upper), bb)
+        )(bs)
     )(Axs, B)
     np.testing.assert_allclose(got, want, atol=1e-10)

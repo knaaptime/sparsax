@@ -423,7 +423,9 @@ def _implicit_solve(Ai, Aj, Ax, b, solve, transpose_solve=None, upper=False):
         lambda v: _coo_matvec(Ai, Aj, Ax, v, upper),
         b,
         solve=lambda _matvec, r: solve(Ax_const, r),
-        transpose_solve=None if symmetric else (lambda _matvec, r: transpose_solve(Ax_const, r)),
+        transpose_solve=None
+        if symmetric
+        else (lambda _matvec, r: transpose_solve(Ax_const, r)),
         symmetric=symmetric,
     )
 

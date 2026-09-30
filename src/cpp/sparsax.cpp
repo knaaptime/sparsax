@@ -28,12 +28,14 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -41,6 +43,84 @@
 
 namespace ffi = xla::ffi;
 namespace nb = nanobind;
+
+// ---------------------------------------------------------------------------
+// Many-column solves on several threads
+//
+// A solve with many right-hand sides is split into column panels solved on
+// several threads, for every backend.  The factor is only read by a solve
+// (cholmod_solve2, umfpack_di_wsolve, and klu_solve apart from its Xwork, which
+// KLU workers replace with their own), and every worker brings its own
+// workspaces, so the panels need no lock.  Each backend's per-thread state is
+// thread_local, so a worker thread builds its own on first use.
+// ---------------------------------------------------------------------------
+
+// Worker threads: SPARSAX_NUM_THREADS if set, else every hardware thread.
+static unsigned sparsax_num_threads() {
+  static const unsigned n = [] {
+    if (const char* env = std::getenv("SPARSAX_NUM_THREADS")) {
+      long v = std::strtol(env, nullptr, 10);
+      if (v > 0) return static_cast<unsigned>(v);
+    }
+    unsigned hw = std::thread::hardware_concurrency();
+    return hw > 0 ? hw : 1u;
+  }();
+  return n;
+}
+
+// Columns per panel.  A block of fewer than two panels is solved serially.
+constexpr int64_t kPanel = 64;
+
+// Threads for an nrhs-column solve; 1 means solve serially.
+static unsigned panel_threads(int64_t nrhs) {
+  return static_cast<unsigned>(
+      std::max<int64_t>(1, std::min<int64_t>(sparsax_num_threads(), nrhs / kPanel)));
+}
+
+// Run the panels of an nrhs-column block on T threads (the caller is one).
+// make_worker() runs once per thread and returns that thread's solver,
+// solve(j0, w) -> error string ("" on success), for columns [j0, j0 + w).
+// Returns the first error.
+template <class MakeWorker>
+static std::string for_each_panel(int64_t nrhs, unsigned T,
+                                  MakeWorker make_worker) {
+  const int64_t panels = (nrhs + kPanel - 1) / kPanel;
+  std::atomic<int64_t> next{0};
+  std::atomic<bool> failed{false};
+  std::mutex err_mtx;
+  std::string err;
+  auto run = [&] {
+    auto solve = make_worker();
+    for (int64_t p; !failed.load() && (p = next.fetch_add(1)) < panels;) {
+      const int64_t j0 = p * kPanel;
+      std::string e = solve(j0, std::min(kPanel, nrhs - j0));
+      if (!e.empty()) {
+        std::lock_guard<std::mutex> lk(err_mtx);
+        if (err.empty()) err = std::move(e);
+        failed = true;
+        return;
+      }
+    }
+  };
+  std::vector<std::thread> pool;
+  pool.reserve(T - 1);
+  for (unsigned t = 1; t < T; ++t) pool.emplace_back(run);
+  run();
+  for (auto& th : pool) th.join();
+  return err;
+}
+
+// Columns [j0, j0 + w) of a row-major (n, ld) block, to and from column-major.
+static void gather_cols(const double* b, int64_t n, int64_t ld, int64_t j0,
+                        int64_t w, double* out) {
+  for (int64_t i = 0; i < n; ++i)
+    for (int64_t j = 0; j < w; ++j) out[i + j * n] = b[i * ld + j0 + j];
+}
+static void scatter_cols(const double* in, int64_t n, int64_t ld, int64_t j0,
+                         int64_t w, double* x) {
+  for (int64_t i = 0; i < n; ++i)
+    for (int64_t j = 0; j < w; ++j) x[i * ld + j0 + j] = in[i + j * n];
+}
 
 // ---------------------------------------------------------------------------
 // CHOLMOD state
@@ -413,44 +493,60 @@ static CholNumPtr chol_get_factor(const std::shared_ptr<CholPattern>& pat,
 // Solve L L' x = b for one right-hand-side block with this thread's solve2
 // workspaces.  bdata/xdata are row-major (JAX layout); CHOLMOD is column-major,
 // so multi-RHS blocks are transposed through scratch.
-static ffi::Error chol_solve_one(cholmod_factor* L, int mode,
-                                 const double* bdata, int64_t n, int64_t nrhs,
-                                 double* xdata) {
+// Columns [j0, j0 + w) of an (n, ld) row-major block, with this thread's
+// common and workspaces.  cholmod_solve2 reuses the thread's X/Y/E workspaces,
+// avoiding cholmod_solve's per-call allocations, and does not modify L.
+static std::string chol_solve_panel(cholmod_factor* L, int mode,
+                                    const double* bdata, int64_t n, int64_t ld,
+                                    int64_t j0, int64_t w, double* xdata) {
   CholThreadLocal& tl = t_chol;
   cholmod_common* c = tl.get();
   const double* bcol = bdata;
-  if (nrhs > 1) {
-    tl.scratch.resize(n * nrhs);
-    for (int64_t i = 0; i < n; ++i)
-      for (int64_t j = 0; j < nrhs; ++j)
-        tl.scratch[i + j * n] = bdata[i * nrhs + j];
+  if (ld > 1) {
+    tl.scratch.resize(n * w);
+    gather_cols(bdata, n, ld, j0, w, tl.scratch.data());
     bcol = tl.scratch.data();
   }
 
   cholmod_dense B;
   std::memset(&B, 0, sizeof(B));
   B.nrow = n;
-  B.ncol = nrhs;
-  B.nzmax = n * nrhs;
+  B.ncol = w;
+  B.nzmax = n * w;
   B.d = n;
   B.x = const_cast<double*>(bcol);
   B.xtype = CHOLMOD_REAL;
   B.dtype = CHOLMOD_DOUBLE;
 
-  // cholmod_solve2 reuses the thread's X/Y/E workspaces, avoiding
-  // cholmod_solve's per-call allocations, and does not modify L.
   int ok = cholmod_solve2(mode, L, &B, nullptr, &tl.X, nullptr, &tl.Y, &tl.E, c);
   if (!ok || !tl.X || c->status < CHOLMOD_OK)
-    return ffi::Error::Internal("sparsax: cholmod_solve failed (status " +
-                                std::to_string(c->status) + ")");
+    return "sparsax: cholmod_solve failed (status " + std::to_string(c->status) +
+           ")";
 
   const double* Xx = static_cast<const double*>(tl.X->x);
-  if (nrhs == 1) {
+  if (ld == 1)
     std::memcpy(xdata, Xx, n * sizeof(double));
-  } else {
-    for (int64_t i = 0; i < n; ++i)
-      for (int64_t j = 0; j < nrhs; ++j) xdata[i * nrhs + j] = Xx[i + j * n];
-  }
+  else
+    scatter_cols(Xx, n, ld, j0, w, xdata);
+  return "";
+}
+
+// Solve with one (n,) or (n, nrhs) row-major right-hand-side block; a block of
+// two or more panels is split across threads (see for_each_panel).
+static ffi::Error chol_solve_one(cholmod_factor* L, int mode,
+                                 const double* bdata, int64_t n, int64_t nrhs,
+                                 double* xdata) {
+  const unsigned T = panel_threads(nrhs);
+  std::string err =
+      T > 1 ? for_each_panel(nrhs, T,
+                             [&] {
+                               return [&](int64_t j0, int64_t w) {
+                                 return chol_solve_panel(L, mode, bdata, n, nrhs,
+                                                         j0, w, xdata);
+                               };
+                             })
+            : chol_solve_panel(L, mode, bdata, n, nrhs, 0, nrhs, xdata);
+  if (!err.empty()) return ffi::Error::Internal(err);
   return ffi::Error::Success();
 }
 
@@ -1687,47 +1783,71 @@ static double klu_logdet_one(const klu_numeric* num, int64_t n) {
 }
 
 // Solve A x = b (trans == false) or A^T x = b (trans == true, used by the VJP)
-// for one right-hand-side block, using this thread's common + scratch. b/x are
-// row-major (JAX layout); KLU is column-major with leading dimension n, so
-// multi-RHS blocks transpose through `work` and KLU solves in place.
+// for one right-hand-side block. b/x are row-major (JAX layout); KLU is
+// column-major with leading dimension n, so multi-RHS blocks transpose through
+// a work buffer and KLU solves in place.
 //
-// Concurrency: the solve takes the factor's own solve_mtx, since klu_solve
-// writes into the factor's workspace; solves against distinct factors run in
-// parallel.
+// Concurrency: klu_solve writes into the factor's workspace (Xwork), so a
+// serial solve takes the factor's own solve_mtx; solves against distinct
+// factors run in parallel.  A block of two or more panels is split across
+// threads (see for_each_panel), each worker solving against a shallow copy of
+// the factor whose Xwork (4n entries) is its own — klu_solve / klu_tsolve read
+// every other field — so the workers need no lock.
 static ffi::Error klu_solve_one(const KluPattern* pat, KluNumericHolder* holder,
                                 bool trans, const double* bdata, int64_t n,
                                 int64_t nrhs, double* xdata) {
+  auto klu_call = [&](klu_numeric* num, int64_t w, double* work,
+                      klu_common* c) -> std::string {
+    c->status = KLU_OK;
+    int ok = trans ? klu_tsolve(pat->symbolic, num, static_cast<int32_t>(n),
+                                static_cast<int32_t>(w), work, c)
+                   : klu_solve(pat->symbolic, num, static_cast<int32_t>(n),
+                               static_cast<int32_t>(w), work, c);
+    if (!ok || c->status != KLU_OK)
+      return "sparsax(klu): klu_solve failed (status " +
+             std::to_string(c->status) + ")";
+    return "";
+  };
+
+  const unsigned T = panel_threads(nrhs);
+  if (T > 1) {
+    std::string err = for_each_panel(nrhs, T, [&] {
+      klu_numeric local = *holder->num;
+      std::vector<double> xwork(4 * n), work;
+      local.Xwork = xwork.data();
+      klu_common c;
+      klu_defaults(&c);
+      return [&, local, xwork = std::move(xwork), work = std::move(work),
+              c](int64_t j0, int64_t w) mutable {
+        local.Xwork = xwork.data();
+        work.resize(n * w);
+        gather_cols(bdata, n, nrhs, j0, w, work.data());
+        std::string e = klu_call(&local, w, work.data(), &c);
+        if (e.empty()) scatter_cols(work.data(), n, nrhs, j0, w, xdata);
+        return e;
+      };
+    });
+    if (!err.empty()) return ffi::Error::Internal(err);
+    return ffi::Error::Success();
+  }
+
   klu_common* c = t_klu.get();
   std::vector<double>& work = t_klu.work;
   work.resize(n * nrhs);
-  if (nrhs == 1) {
+  if (nrhs == 1)
     std::memcpy(work.data(), bdata, n * sizeof(double));
-  } else {
-    for (int64_t i = 0; i < n; ++i)
-      for (int64_t j = 0; j < nrhs; ++j)
-        work[i + j * n] = bdata[i * nrhs + j];
-  }
-
-  c->status = KLU_OK;
-  int ok;
+  else
+    gather_cols(bdata, n, nrhs, 0, nrhs, work.data());
+  std::string err;
   {
     std::lock_guard<std::mutex> lk(holder->solve_mtx);
-    ok = trans ? klu_tsolve(pat->symbolic, holder->num, static_cast<int32_t>(n),
-                            static_cast<int32_t>(nrhs), work.data(), c)
-               : klu_solve(pat->symbolic, holder->num, static_cast<int32_t>(n),
-                           static_cast<int32_t>(nrhs), work.data(), c);
+    err = klu_call(holder->num, nrhs, work.data(), c);
   }
-  if (!ok || c->status != KLU_OK)
-    return ffi::Error::Internal("sparsax(klu): klu_solve failed (status " +
-                                std::to_string(c->status) + ")");
-
-  if (nrhs == 1) {
+  if (!err.empty()) return ffi::Error::Internal(err);
+  if (nrhs == 1)
     std::memcpy(xdata, work.data(), n * sizeof(double));
-  } else {
-    for (int64_t i = 0; i < n; ++i)
-      for (int64_t j = 0; j < nrhs; ++j)
-        xdata[i * nrhs + j] = work[i + j * n];
-  }
+  else
+    scatter_cols(work.data(), n, nrhs, 0, nrhs, xdata);
   return ffi::Error::Success();
 }
 
@@ -2414,42 +2534,53 @@ static double umf_logdet_one(void* num) {
 // for one right-hand-side block. UMFPACK solves a single RHS per call, so a
 // multi-RHS block loops over columns; b/x are row-major (JAX layout), so each
 // column is gathered into scratch and scattered back. With refinement off the
-// matrix itself is not accessed, hence the NULL Ap/Ai/Ax.
+// matrix itself is not accessed, hence the NULL Ap/Ai/Ax.  umfpack_di_wsolve
+// only reads the factor, and each thread brings its own Control and workspace,
+// so a block of two or more panels is split across threads (for_each_panel).
+static std::string umf_solve_panel(void* num, int sys, const double* bdata,
+                                   int64_t n, int64_t ld, int64_t j0, int64_t w,
+                                   double* xdata) {
+  UmfThreadLocal& tl = t_umf;
+  double* Control = tl.get();
+  tl.wi.resize(n);
+  tl.w.resize(n);
+  auto call = [&](double* x, const double* b) -> std::string {
+    int status = umfpack_di_wsolve(sys, nullptr, nullptr, nullptr, x, b, num,
+                                   Control, nullptr, tl.wi.data(), tl.w.data());
+    if (status != UMFPACK_OK)
+      return "sparsax(umfpack): umfpack_di_solve failed (status " +
+             std::to_string(status) + ")";
+    return "";
+  };
+  if (ld == 1) return call(xdata, bdata);
+
+  tl.bcol.resize(n);
+  tl.xcol.resize(n);
+  for (int64_t j = j0; j < j0 + w; ++j) {
+    for (int64_t i = 0; i < n; ++i) tl.bcol[i] = bdata[i * ld + j];
+    std::string e = call(tl.xcol.data(), tl.bcol.data());
+    if (!e.empty()) return e;
+    for (int64_t i = 0; i < n; ++i) xdata[i * ld + j] = tl.xcol[i];
+  }
+  return "";
+}
+
 static ffi::Error umf_solve_one(UmfNumericHolder* holder, bool trans,
                                 const double* bdata, int64_t n, int64_t nrhs,
                                 double* xdata) {
   void* num = holder->num;
-  double* Control = t_umf.get();
   int sys = trans ? UMFPACK_At : UMFPACK_A;
-  t_umf.wi.resize(n);
-  t_umf.w.resize(n);
-
-  if (nrhs == 1) {
-    int status = umfpack_di_wsolve(sys, nullptr, nullptr, nullptr, xdata, bdata,
-                                   num, Control, nullptr, t_umf.wi.data(),
-                                   t_umf.w.data());
-    if (status != UMFPACK_OK)
-      return ffi::Error::Internal(
-          "sparsax(umfpack): umfpack_di_solve failed (status " +
-          std::to_string(status) + ")");
-    return ffi::Error::Success();
-  }
-
-  std::vector<double>& bcol = t_umf.bcol;
-  std::vector<double>& xcol = t_umf.xcol;
-  bcol.resize(n);
-  xcol.resize(n);
-  for (int64_t j = 0; j < nrhs; ++j) {
-    for (int64_t i = 0; i < n; ++i) bcol[i] = bdata[i * nrhs + j];
-    int status = umfpack_di_wsolve(sys, nullptr, nullptr, nullptr, xcol.data(),
-                                   bcol.data(), num, Control, nullptr,
-                                   t_umf.wi.data(), t_umf.w.data());
-    if (status != UMFPACK_OK)
-      return ffi::Error::Internal(
-          "sparsax(umfpack): umfpack_di_solve failed (status " +
-          std::to_string(status) + ")");
-    for (int64_t i = 0; i < n; ++i) xdata[i * nrhs + j] = xcol[i];
-  }
+  const unsigned T = panel_threads(nrhs);
+  std::string err =
+      T > 1 ? for_each_panel(nrhs, T,
+                             [&] {
+                               return [&](int64_t j0, int64_t w) {
+                                 return umf_solve_panel(num, sys, bdata, n, nrhs,
+                                                        j0, w, xdata);
+                               };
+                             })
+            : umf_solve_panel(num, sys, bdata, n, nrhs, 0, nrhs, xdata);
+  if (!err.empty()) return ffi::Error::Internal(err);
   return ffi::Error::Success();
 }
 

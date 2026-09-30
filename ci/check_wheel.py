@@ -18,7 +18,9 @@ import sparsax
 
 # Runtimes that must come from the host, never from the wheel: a second copy of
 # an OpenMP runtime aborts the process, and the Fortran runtime is not needed.
-FORBIDDEN = re.compile(r"(libomp|libiomp|libgomp|vcomp|libgfortran|libquadmath)", re.IGNORECASE)
+FORBIDDEN = re.compile(
+    r"(libomp|libiomp|libgomp|vcomp|libgfortran|libquadmath)", re.IGNORECASE
+)
 
 root = pathlib.Path(sparsax.__file__).resolve().parent
 bundled = [
@@ -43,8 +45,12 @@ def f(t):
 
 
 A = np.array([[4.0, 1.0, 0.0], [1.0, 3.0, 0.5], [0.0, 0.5, 2.0]])
-np.testing.assert_allclose(np.asarray(sparsax.solve(Ai, Aj, Ax, b)), np.linalg.solve(A, b))
+np.testing.assert_allclose(
+    np.asarray(sparsax.solve(Ai, Aj, Ax, b)), np.linalg.solve(A, b)
+)
 # f(t) = |x|^2 / (1 + t)^2 with x = A^{-1} b, so f''(0) = 6 |x|^2.
 x = np.linalg.solve(A, np.asarray(b))
 np.testing.assert_allclose(float(jax.grad(jax.grad(f))(0.0)), 6.0 * x @ x, rtol=1e-10)
-print(f"sparsax {sparsax.__version__}: bundled {sorted(bundled) or 'nothing'}; checks passed")
+print(
+    f"sparsax {sparsax.__version__}: bundled {sorted(bundled) or 'nothing'}; checks passed"
+)

@@ -244,3 +244,54 @@ def test_cholmod_concurrent_update_solve_and_selinv_are_exact():
         return worst
 
     assert max(_run_threads(work)) < 1e-9
+
+
+# --- One solve with many right-hand sides, split across threads -------------
+
+MANY_RHS = 5 * 64 + 17  # five full 64-column panels and a ragged sixth
+
+
+def _many_rhs_system(backend):
+    """``(solve(ax, b), Ax, dense A)`` for a backend."""
+    if backend in LU_BACKENDS:
+        Ai, Aj, values, dense, n = lu_system(12)
+        lu = LU_BACKENDS[backend][0]
+        return (lambda ax, b: lu(Ai, Aj, ax, b)), jnp.asarray(values(0.6)), dense(0.6)
+    Ai, Aj, values, dense, n = spd_system(12)
+    return (
+        (lambda ax, b: sparsax.solve(Ai, Aj, ax, b)),
+        jnp.asarray(values(1.2)),
+        dense(1.2),
+    )
+
+
+@pytest.mark.parametrize(
+    "backend", ["klu", "umfpack", "cholmod-simplicial", "cholmod-supernodal"]
+)
+def test_many_rhs_solve_matches_dense(backend):
+    """A block of two or more 64-column panels is solved on several threads.
+
+    Every backend's workers share the factor, each with its own workspaces.
+    Pin the forward solve and the transpose solve behind its VJP against dense
+    algebra, alone and with chains calling at once.
+    """
+    if backend.startswith("cholmod"):
+        sparsax.set_options(supernodal=backend.split("-")[1])
+    try:
+        solve, Ax, A = _many_rhs_system(backend)
+        n = A.shape[0]
+        rng = np.random.default_rng(0)
+        B = rng.standard_normal((n, MANY_RHS))
+        C = rng.standard_normal((n, MANY_RHS))
+
+        def solve_and_vjp(_=None):
+            x, vjp = jax.vjp(lambda b: solve(Ax, b), jnp.asarray(B))
+            return np.asarray(x), np.asarray(vjp(jnp.asarray(C))[0])
+
+        x_ref = np.linalg.solve(A, B)
+        g_ref = np.linalg.solve(A.T, C)
+        for x, g in [solve_and_vjp(), *_run_threads(solve_and_vjp)]:
+            np.testing.assert_allclose(x, x_ref, rtol=1e-11, atol=1e-11)
+            np.testing.assert_allclose(g, g_ref, rtol=1e-11, atol=1e-11)
+    finally:
+        sparsax.set_options(supernodal="auto")
