@@ -918,6 +918,12 @@ pthreads build of OpenBLAS on Linux) but no OpenMP runtime, so they cannot clash
 OpenMP runtime of another library in the same process. With many concurrent callers, cap BLAS
 threads to avoid oversubscription, e.g. <code class="docutils literal notranslate"><span class="pre">OPENBLAS_NUM_THREADS=1</span></code> on Linux or
 <code class="docutils literal notranslate"><span class="pre">VECLIB_MAXIMUM_THREADS=1</span></code> on macOS.</p>
+<p>A single solve with many right-hand sides (128 columns or more) is itself split into
+64-column panels solved on every hardware thread, for all three backends;
+<code class="docutils literal notranslate"><span class="pre">SPARSAX_NUM_THREADS</span></code> caps it. The factor is only read, and each worker brings its own
+workspaces. With 4,000 right-hand sides on an <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">3,600</span></code> k-NN system, 16 threads take
+the solve from 0.24 s to 0.018 s (KLU), 0.63 s to 0.061 s (UMFPACK), and 0.21 s / 0.47 s
+to 0.026 s / 0.032 s (CHOLMOD simplicial / supernodal).</p>
 <h2 id="pymc-pytensor-nuts">PyMC / PyTensor (NUTS)<a class="headerlink" href="#pymc-pytensor-nuts" title="Link to this heading">¶</a></h2>
 <p>The same CHOLMOD core is exposed as a <strong>PyTensor</strong> frontend for PyMC’s default backend, so
 gradient-based samplers (NUTS) can differentiate through the sparse solve and log-determinant
