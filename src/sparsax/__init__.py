@@ -93,6 +93,7 @@ __all__ = [
     "set_lu_cache_size",
     "set_umf_cache_size",
     "set_num_cache_size",
+    "set_token_cache_size",
     "solve_bcoo",
     "logdet_bcoo",
     "update_solve_bcoo",
@@ -1174,6 +1175,18 @@ def set_num_cache_size(n):
     """
     _cpp.set_num_cache_size(int(n))
 
+
+def set_token_cache_size(n):
+    """Keep at most ``n`` factor tokens per backend (default 64).
+
+    :func:`factor`, :func:`lu_factor` and :func:`umf_factor` return tokens that
+    pin their numeric factor.  Tokens are plain arrays with no destructor, so
+    sparsax keeps only each backend's ``n`` newest and releases the rest; a
+    released token raises a "stale factor token" error when used.  Hold a
+    token across at most ``n`` newer factorizations of that backend, or raise
+    ``n`` (at the cost of up to ``n`` resident factors).
+    """
+    _cpp.set_token_cache_size(int(n))
 
 def _logdet_ffi(Ai, Aj, Ax, n):
     call = jax.ffi.ffi_call(

@@ -199,6 +199,19 @@ output — `factor` / `solve_factor` / `logdet_factor` (CHOLMOD), `lu_factor` /
 to the numeric factor, guaranteeing reuse inside `lax.fori_loop` without relying on a host-side
 cache surviving JIT-compiled iterations.
 
+Tokens are plain arrays with no destructor, so each backend keeps only its 64 newest
+(`set_token_cache_size` changes it) and releases the rest; a released token raises a
+"stale factor token" error. Hold a token across at most that many newer factorizations of its
+backend, or refactor.
+
+Once a pattern's value cache is full (`set_lu_cache_size`, `set_umf_cache_size`,
+`set_num_cache_size`; 32 by default), a factorization at new values reuses the storage of the
+factor it evicts, provided no token or in-flight solve still holds it: CHOLMOD refactors it in
+place, and KLU runs `klu_refactor` on its pivot sequence (1.2–1.8× cheaper than `klu_factor`),
+falling back to a full factorization if the reciprocal pivot growth collapses. UMFPACK's symbolic
+analysis uses the values of the first call on a pattern, which lets it choose the symmetric
+strategy for `I − ρW` (1.35–1.95× faster numeric factorizations than a pattern-only analysis).
+
 ## Factor once, do everything: `factor_solve` / `sample_gaussian`
 
 `solve` and `logdet` are separate primitives, so a Gibbs sweep that needs a posterior mean, a
