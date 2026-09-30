@@ -19,8 +19,9 @@ jobs:
           # Linux x86_64 — manylinux via cibuildwheel's default container
           - os: ubuntu-latest
             arch: x86_64
-          # Linux aarch64 — emulated via QEMU
-          - os: ubuntu-latest
+          # Linux aarch64 — native ARM runner (free for public repos); QEMU
+          # emulation is far too slow to compile OpenBLAS and SuiteSparse.
+          - os: ubuntu-24.04-arm
             arch: aarch64
           # macOS Apple Silicon (arm64) -- pinned rather than macos-latest.
           # SuiteSparse is now built from source honouring
@@ -127,13 +128,6 @@ jobs:
           git fetch origin
           git checkout -B master origin/master
           .\bootstrap-vcpkg.bat -disableMetrics
-
-      # Enable QEMU for Linux aarch64 cross-compilation.
-      - name: Set up QEMU (Linux aarch64 only)
-        if: matrix.os == 'ubuntu-latest' && matrix.arch == 'aarch64'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
 
       - name: Build wheels
         # v2.x predates CPython 3.14, so the cp314-* selector above matched

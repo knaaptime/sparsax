@@ -13,8 +13,8 @@
 #     is SuiteSparse 4.4 (2014), with ATLAS as BLAS.
 #
 # BLAS: Accelerate on macOS; the pthreads build of OpenBLAS on Linux.  Both
-# are multithreaded without an OpenMP runtime (the OpenMP build of OpenBLAS,
-# libopenblaso, would bring libgomp back into the wheel).  Threads matter for
+# are multithreaded without an OpenMP runtime (an OpenMP build of OpenBLAS
+# would bring libgomp back into the wheel).  Threads matter for
 # UMFPACK and for CHOLMOD's supernodal kernels on large supernodes (measured on
 # Accelerate: ~28% faster UMFPACK on a denser graph, ~10% CHOLMOD on a 3-D
 # grid, nothing on planar kNN graphs).  The pthreads build is also safe under
@@ -32,21 +32,28 @@ case "$(uname -s)" in
     BLAS_ARGS=(-DBLA_VENDOR=Apple)
     ;;
   Linux)
-    (dnf install -y openblas-devel || yum install -y openblas-devel)
-    # FindBLAS's OpenBLAS vendor picks the serial libopenblas, so name the
-    # pthreads library explicitly; SuiteSparse then uses it as given, with
-    # BLA_VENDOR telling it which vendor it is.  Fail rather than fall back.
-    # Test each candidate rather than `ls a b | head`: ls exits 2 when any
-    # argument is missing, which pipefail + set -e turn into a silent abort.
-    OPENBLAS_P=""
-    for candidate in /usr/lib64/libopenblasp.so /usr/lib/libopenblasp.so; do
-      if [ -e "$candidate" ]; then OPENBLAS_P="$candidate"; break; fi
-    done
-    if [ -z "$OPENBLAS_P" ]; then
-      echo "build_suitesparse.sh: pthreads OpenBLAS (libopenblasp.so) not found" >&2
-      exit 1
+    # OpenBLAS from source too: EL8's openblas links libgfortran/libquadmath
+    # (its LAPACK is compiled Fortran), which auditwheel would bundle.
+    # NOFORTRAN + C_LAPACK builds LAPACK from its C translation; USE_THREAD
+    # without USE_OPENMP is the pthreads build.  DYNAMIC_ARCH selects kernels
+    # at runtime, so the wheel is not tied to the build machine's CPU.
+    OPENBLAS_VERSION="${OPENBLAS_VERSION:-0.3.34}"
+    OPENBLAS_SRC="${WORKDIR}/OpenBLAS-${OPENBLAS_VERSION}"
+    if [ ! -d "$OPENBLAS_SRC" ]; then
+      curl -fsSL "https://github.com/OpenMathLib/OpenBLAS/releases/download/v${OPENBLAS_VERSION}/OpenBLAS-${OPENBLAS_VERSION}.tar.gz" \
+        | tar xz -C "$WORKDIR"
     fi
-    BLAS_ARGS=(-DBLA_VENDOR=OpenBLAS -DBLAS_LIBRARIES="$OPENBLAS_P" -DLAPACK_LIBRARIES="$OPENBLAS_P")
+    case "$(uname -m)" in
+      x86_64) OPENBLAS_TARGET=PRESCOTT ;;
+      aarch64) OPENBLAS_TARGET=ARMV8 ;;
+      *) echo "build_suitesparse.sh: unsupported arch $(uname -m)" >&2; exit 1 ;;
+    esac
+    OPENBLAS_FLAGS=(NOFORTRAN=1 C_LAPACK=1 USE_THREAD=1 USE_OPENMP=0
+      NUM_THREADS=64 DYNAMIC_ARCH=1 TARGET="$OPENBLAS_TARGET" NO_STATIC=1)
+    make -C "$OPENBLAS_SRC" -j"$(getconf _NPROCESSORS_ONLN)" "${OPENBLAS_FLAGS[@]}" libs netlib shared
+    make -C "$OPENBLAS_SRC" "${OPENBLAS_FLAGS[@]}" PREFIX="$PREFIX" install
+    OPENBLAS_LIB="${PREFIX}/lib/libopenblas.so"
+    BLAS_ARGS=(-DBLA_VENDOR=OpenBLAS -DBLAS_LIBRARIES="$OPENBLAS_LIB" -DLAPACK_LIBRARIES="$OPENBLAS_LIB")
     ;;
   *)
     echo "build_suitesparse.sh: unsupported platform $(uname -s)" >&2
