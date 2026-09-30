@@ -854,6 +854,17 @@ output — <code class="docutils literal notranslate"><span class="pre">factor</
 <code class="docutils literal notranslate"><span class="pre">umf_logdet_factor</span></code> (UMFPACK) return an opaque token carrying a strong reference
 to the numeric factor, guaranteeing reuse inside <code class="docutils literal notranslate"><span class="pre">lax.fori_loop</span></code> without relying on a host-side
 cache surviving JIT-compiled iterations.</p>
+<p>Tokens are plain arrays with no destructor, so each backend keeps only its 64 newest
+(<code class="docutils literal notranslate"><span class="pre">set_token_cache_size</span></code> changes it) and releases the rest; a released token raises a
+“stale factor token” error. Hold a token across at most that many newer factorizations of its
+backend, or refactor.</p>
+<p>Once a pattern’s value cache is full (<code class="docutils literal notranslate"><span class="pre">set_lu_cache_size</span></code>, <code class="docutils literal notranslate"><span class="pre">set_umf_cache_size</span></code>,
+<code class="docutils literal notranslate"><span class="pre">set_num_cache_size</span></code>; 32 by default), a factorization at new values reuses the storage of the
+factor it evicts, provided no token or in-flight solve still holds it: CHOLMOD refactors it in
+place, and KLU runs <code class="docutils literal notranslate"><span class="pre">klu_refactor</span></code> on its pivot sequence (1.2–1.8× cheaper than <code class="docutils literal notranslate"><span class="pre">klu_factor</span></code>),
+falling back to a full factorization if the reciprocal pivot growth collapses. UMFPACK’s symbolic
+analysis uses the values of the first call on a pattern, which lets it choose the symmetric
+strategy for <code class="docutils literal notranslate"><span class="pre">I</span> <span class="pre">−</span> <span class="pre">ρW</span></code> (1.35–1.95× faster numeric factorizations than a pattern-only analysis).</p>
 <h2 id="factor-once-do-everything-factor-solve-sample-gaussian">Factor once, do everything: <code class="docutils literal notranslate"><span class="pre">factor_solve</span></code> / <code class="docutils literal notranslate"><span class="pre">sample_gaussian</span></code><a class="headerlink" href="#factor-once-do-everything-factor-solve-sample-gaussian" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">solve</span></code> and <code class="docutils literal notranslate"><span class="pre">logdet</span></code> are separate primitives, so a Gibbs sweep that needs a posterior mean, a
 correlated draw, and a log-determinant factors the <em>same</em> A several times — and under <code class="docutils literal notranslate"><span class="pre">vmap</span></code>
