@@ -36,7 +36,12 @@ case "$(uname -s)" in
     # FindBLAS's OpenBLAS vendor picks the serial libopenblas, so name the
     # pthreads library explicitly; SuiteSparse then uses it as given, with
     # BLA_VENDOR telling it which vendor it is.  Fail rather than fall back.
-    OPENBLAS_P="$(ls /usr/lib64/libopenblasp.so /usr/lib/libopenblasp.so 2>/dev/null | head -n 1)"
+    # Test each candidate rather than `ls a b | head`: ls exits 2 when any
+    # argument is missing, which pipefail + set -e turn into a silent abort.
+    OPENBLAS_P=""
+    for candidate in /usr/lib64/libopenblasp.so /usr/lib/libopenblasp.so; do
+      if [ -e "$candidate" ]; then OPENBLAS_P="$candidate"; break; fi
+    done
     if [ -z "$OPENBLAS_P" ]; then
       echo "build_suitesparse.sh: pthreads OpenBLAS (libopenblasp.so) not found" >&2
       exit 1
