@@ -22,11 +22,12 @@ jobs:
           # Linux aarch64 — emulated via QEMU
           - os: ubuntu-latest
             arch: aarch64
-          # macOS Apple Silicon (arm64) -- pinned rather than macos-latest,
-          # since macos-latest now resolves to macOS 26 (Tahoe) and
-          # Homebrew's bottles for that host embed a minimum target of 26.0,
-          # which would make the wheel unusable on any older macOS. Bump
-          # this pin (and the target below) deliberately, not automatically.
+          # macOS Apple Silicon (arm64) -- pinned rather than macos-latest.
+          # SuiteSparse is now built from source honouring
+          # MACOSX_DEPLOYMENT_TARGET, so the old reason (Homebrew bottles
+          # embedding the host's minimum target) no longer applies and the
+          # target below could be lowered to widen compatibility. Bump the
+          # pin and the target deliberately, not automatically.
           - os: macos-15
             arch: arm64
             macosx_deployment_target: "15.0"
@@ -57,30 +58,27 @@ jobs:
       # is current enough for modern prebuilt wheels of everything involved.
       CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
       CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
-      # CHOLMOD (from SuiteSparse) isn't preinstalled in the manylinux
-      # container either; manylinux_2_28 has PowerTools enabled by default,
-      # so plain yum/dnf install works, no EPEL/CRB needed. However the RPM
-      # installs headers to /usr/include/suitesparse/ (not /usr/include/
-      # directly), and the project's CMakeLists.txt only guesses that
-      # subdirectory under CHOLMOD_PREFIX, which defaults to the Python venv
-      # path (wrong) rather than /usr when unset. Pass CHOLMOD_PREFIX=/usr
-      # explicitly via scikit-build-core's CMake-args env var so it lands as
-      # an actual CMake variable regardless of how the project reads it.
-      CIBW_BEFORE_BUILD_LINUX: >
-        (yum install -y suitesparse-devel || dnf install -y suitesparse-devel || apt-get install -y libsuitesparse-dev || true) &&
-        pip install "jax>=0.11"
-      CIBW_ENVIRONMENT_LINUX: >
-        SKBUILD_CMAKE_ARGS="-DCHOLMOD_PREFIX=/usr"
-
-      # ── macOS ──────────────────────────────────────────────────────────────
-      # CHOLMOD (from SuiteSparse) isn't preinstalled on the macOS runner
-      # images, so CMake can't find it. Install it via Homebrew and point
-      # CMake at the Homebrew prefix so configure can locate it.
-      CIBW_BEFORE_BUILD_MACOS: >
-        brew install suitesparse &&
-        pip install "jax>=0.11"
+      # ── macOS and Linux: SuiteSparse from source ───────────────────────────
+      # ci/build_suitesparse.sh builds SuiteSparse without OpenMP or Fortran
+      # (see the script for why), once per runner/container, before any
+      # Python build.  jax comes from pyproject's [build-system] pin (the
+      # build is isolated), so nothing is pip-installed here.
+      CIBW_BEFORE_ALL_MACOS: bash ci/build_suitesparse.sh
+      CIBW_BEFORE_ALL_LINUX: bash ci/build_suitesparse.sh
       CIBW_ENVIRONMENT_MACOS: >
-        SKBUILD_CMAKE_ARGS="-DCHOLMOD_PREFIX=$(brew --prefix suitesparse);-DCMAKE_PREFIX_PATH=$(brew --prefix suitesparse)"
+        SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=/tmp/suitesparse"
+      # SuiteSparse installs to lib64 on EL; auditwheel needs to find it.
+      CIBW_ENVIRONMENT_LINUX: >
+        SKBUILD_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=/tmp/suitesparse"
+        LD_LIBRARY_PATH="/tmp/suitesparse/lib64:/tmp/suitesparse/lib:$LD_LIBRARY_PATH"
+
+      # ── Every platform: test the repaired wheel before it can publish ─────
+      # Fails on a bundled OpenMP/Fortran runtime and checks a solve and a
+      # second derivative, then runs the autodiff test module.
+      CIBW_TEST_REQUIRES: pytest scipy
+      CIBW_TEST_COMMAND: >
+        python {project}/ci/check_wheel.py &&
+        pytest -q {project}/tests/test_higher_order_ad.py
 
       # ── Windows ────────────────────────────────────────────────────────────
       # CHOLMOD (from SuiteSparse) isn't preinstalled here either. vcpkg
@@ -102,7 +100,7 @@ jobs:
       # vcpkg is at a stale commit; updating vcpkg itself picks up the
       # corrected package pins (e.g. autoconf2.71-2.71-4-any).
       CIBW_BEFORE_BUILD_WINDOWS: >
-        pip install delvewheel "jax>=0.11" &&
+        pip install delvewheel &&
         vcpkg install "suitesparse[gpl]:x64-windows"
       CIBW_ENVIRONMENT_WINDOWS: >
         CMAKE_PREFIX_PATH="C:/vcpkg/installed/x64-windows"
@@ -113,6 +111,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # setuptools-scm needs tags
 
       # Update the runner's preinstalled vcpkg to pick up fixed msys2
       # package pins (the stale commit has autoconf2.71-2.71-3-any which
@@ -136,7 +136,9 @@ jobs:
           platforms: arm64
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.21
+        # v2.x predates CPython 3.14, so the cp314-* selector above matched
+        # nothing and 3.14 wheels were silently never built.
+        uses: pypa/cibuildwheel@v4.2.1
         with:
           output-dir: wheelhouse
 
@@ -151,6 +153,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # setuptools-scm needs tags
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

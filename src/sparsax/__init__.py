@@ -58,7 +58,14 @@ import numpy as np
 
 import sparsax_cpp as _cpp
 
-__version__ = "0.9.0"
+try:
+    # Single source of truth: the version in pyproject.toml, via the
+    # installed distribution's metadata.
+    from importlib.metadata import version as _dist_version
+
+    __version__ = _dist_version("sparsax")
+except Exception:  # running from a source tree that was never installed
+    __version__ = "0+unknown"
 __all__ = [
     "solve",
     "logdet",
@@ -292,6 +299,50 @@ def _share_pattern(Ai, Aj, Ai_batched, Aj_batched):
     return Ai, Aj
 
 
+# Batched FFI calls wrapped so that a further vmap folds into the existing
+# batch axis.  Without this, a second level of vmap -- jax.hessian,
+# jacfwd(jacrev(...)), or a user's vmap of a vmap -- reaches the raw batched
+# ffi_call, which has no batching rule.
+_NESTABLE = {}
+
+
+def _nestable(batched, flag):
+    """``batched(Ai, Aj, Ax, b, flag)`` as a call that supports nested ``vmap``.
+
+    ``Ax`` and ``b`` carry a leading batch axis.  Under another ``vmap`` the
+    outer and existing axes are merged, the same batched handler solves the
+    whole block, and the result is split again -- recursively, so any depth of
+    nesting reduces to one native call.
+    """
+    key = (batched, flag)
+    if key in _NESTABLE:
+        return _NESTABLE[key]
+
+    @jax.custom_batching.custom_vmap
+    def call(Ai, Aj, Ax, b):
+        return batched(Ai, Aj, Ax, b, flag)
+
+    @call.def_vmap
+    def _call_vmap(axis_size, in_batched, Ai, Aj, Ax, b):
+        Ai_batched, Aj_batched, Ax_batched, b_batched = in_batched
+        Ai, Aj = _share_pattern(Ai, Aj, Ai_batched, Aj_batched)
+        if not Ax_batched:
+            Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
+        if not b_batched:
+            b = jnp.broadcast_to(b, (axis_size,) + b.shape)
+        outer, inner = Ax.shape[0], Ax.shape[1]
+        x = call(
+            Ai,
+            Aj,
+            Ax.reshape((outer * inner,) + Ax.shape[2:]),
+            b.reshape((outer * inner,) + b.shape[2:]),
+        )
+        return x.reshape((outer, inner) + x.shape[1:]), True
+
+    _NESTABLE[key] = call
+    return call
+
+
 # One custom_vmap-wrapped dispatcher per solve mode: an ordinary (unbatched)
 # FFI call normally, but under vmap it routes to the batched handler so the
 # batch loop runs in C++ instead of as XLA per-iteration dispatch. Ai/Aj are
@@ -315,7 +366,7 @@ def _make_solve_dispatch(mode):
             Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
         if not b_batched:
             b = jnp.broadcast_to(b, (axis_size,) + b.shape)
-        return _solve_batched(Ai, Aj, Ax, b, mode), True
+        return _nestable(_solve_batched, mode)(Ai, Aj, Ax, b), True
 
     return dispatch
 
@@ -325,6 +376,56 @@ def _solve_ffi(Ai, Aj, Ax, b, mode):
     if dispatch is None:
         dispatch = _DISPATCH[mode] = _make_solve_dispatch(mode)
     return dispatch(Ai, Aj, Ax, b)
+
+
+def _coo_matvec(Ai, Aj, Ax, v, upper):
+    """``A @ v`` for a COO matrix, with duplicates summed.
+
+    With ``upper=True`` the matrix is symmetric and held by its upper
+    triangle, :func:`solve`'s convention: an entry with ``Ai < Aj`` stands for
+    both ``(i, j)`` and ``(j, i)``, and entries with ``Ai > Aj`` are ignored.
+    """
+    n = v.shape[0]
+
+    def spread(w, src, dst):
+        wv = w[:, None] * v[src] if v.ndim == 2 else w * v[src]
+        return jax.ops.segment_sum(wv, dst, num_segments=n)
+
+    if not upper:
+        return spread(Ax, Aj, Ai)
+    off = jnp.where(Ai < Aj, Ax, 0.0)
+    diag = jnp.where(Ai == Aj, Ax, 0.0)
+    return spread(off, Aj, Ai) + spread(off, Ai, Aj) + spread(diag, Ai, Ai)
+
+
+def _implicit_solve(Ai, Aj, Ax, b, solve, transpose_solve=None, upper=False):
+    """``x = A^{-1} b`` with autodiff of any order, via ``jax.lax.custom_linear_solve``.
+
+    The native solvers have no derivative rules of their own and need none:
+    differentiating ``A x = b`` gives ``A dx = db - dA x``, so every derivative
+    of a solve is another solve.  ``custom_linear_solve`` applies that
+    identity, taking derivatives with respect to ``Ax`` through the COO
+    ``matvec`` and transposing with ``transpose_solve`` (the same factor, so
+    no refactorisation), recursively -- forward and reverse mode, to any
+    order.  A hand-written ``custom_vjp`` whose backward pass calls the raw
+    kernel supports only a first derivative.
+
+    Args:
+        solve: ``(Ax, r) -> A^{-1} r`` via a native kernel.
+        transpose_solve: ``(Ax, r) -> A^{-T} r``; omit when ``A`` is symmetric.
+        upper: ``A`` is symmetric and stored by its upper triangle.
+    """
+    # The kernels are never differentiated; derivatives with respect to Ax
+    # come from matvec.
+    Ax_const = jax.lax.stop_gradient(Ax)
+    symmetric = transpose_solve is None
+    return jax.lax.custom_linear_solve(
+        lambda v: _coo_matvec(Ai, Aj, Ax, v, upper),
+        b,
+        solve=lambda _matvec, r: solve(Ax_const, r),
+        transpose_solve=None if symmetric else (lambda _matvec, r: transpose_solve(Ax_const, r)),
+        symmetric=symmetric,
+    )
 
 
 def solve(Ai, Aj, Ax, b, mode=MODE_A):
@@ -368,32 +469,19 @@ def solve(Ai, Aj, Ax, b, mode=MODE_A):
         # through them is not defined.
         return _solve_ffi(Ai, Aj, Ax, b, mode)
 
-    # AD: for x = A^{-1} b with A symmetric, v = A^{-1} g gives db = v and,
-    # for the stored upper-triangle entry (i, j) which appears in the matrix
-    # at both (i, j) and (j, i), dAx = -(v_i x_j + v_j x_i) (i < j) or
-    # -v_i x_i (i == j). Ignored lower-triangle entries get zero.
-    @jax.custom_vjp
-    def _solve_a(Ax, b):
-        return _solve_ffi(Ai, Aj, Ax, b, MODE_A)
-
-    def _fwd(Ax, b):
-        x = _solve_ffi(Ai, Aj, Ax, b, MODE_A)
-        return x, (Ax, x)
-
-    def _bwd(res, g):
-        Ax_saved, x = res
-        v = _solve_ffi(Ai, Aj, Ax_saved, g, MODE_A)
-        if x.ndim == 1:
-            cross = v[Ai] * x[Aj] + v[Aj] * x[Ai]
-            diag = v[Ai] * x[Ai]
-        else:
-            cross = (v[Ai] * x[Aj]).sum(-1) + (v[Aj] * x[Ai]).sum(-1)
-            diag = (v[Ai] * x[Ai]).sum(-1)
-        dAx = -jnp.where(Ai == Aj, diag, jnp.where(Ai < Aj, cross, 0.0))
-        return dAx, v
-
-    _solve_a.defvjp(_fwd, _bwd)
-    return _solve_a(Ax, b)
+    # AD by implicit differentiation (see _implicit_solve).  For the
+    # gradient this reproduces the classic rule -- v = A^{-1} g gives db = v
+    # and, for a stored upper-triangle entry (i, j), dAx = -(v_i x_j + v_j x_i)
+    # (i < j) or -v_i x_i (i == j), with ignored lower-triangle entries zero --
+    # and it extends to derivatives of any order.
+    return _implicit_solve(
+        Ai,
+        Aj,
+        Ax,
+        b,
+        solve=lambda Ax_, r: _solve_ffi(Ai, Aj, Ax_, r, MODE_A),
+        upper=True,
+    )
 
 
 # --- KLU: sparse LU for non-symmetric A (e.g. A = I - rho W) ---------------
@@ -435,7 +523,7 @@ def _make_lu_dispatch(trans):
             Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
         if not b_batched:
             b = jnp.broadcast_to(b, (axis_size,) + b.shape)
-        return _lu_solve_batched(Ai, Aj, Ax, b, trans), True
+        return _nestable(_lu_solve_batched, trans)(Ai, Aj, Ax, b), True
 
     return dispatch
 
@@ -483,28 +571,17 @@ def lu_solve(Ai, Aj, Ax, b):
             f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
         )
 
-    # AD for x = A^{-1} b: with v solving A^T v = g (a transpose solve reusing
-    # the same cached factor), db = v and dA = -v x^T, i.e. for COO entry k at
-    # (i, j), dAx[k] = -v_i x_j (summed over right-hand sides). No symmetry.
-    @jax.custom_vjp
-    def _lu(Ax, b):
-        return _lu_solve_ffi(Ai, Aj, Ax, b, 0)
-
-    def _fwd(Ax, b):
-        x = _lu_solve_ffi(Ai, Aj, Ax, b, 0)
-        return x, (Ax, x)
-
-    def _bwd(res, g):
-        Ax_saved, x = res
-        v = _lu_solve_ffi(Ai, Aj, Ax_saved, g, 1)  # A^T v = g
-        if x.ndim == 1:
-            dAx = -(v[Ai] * x[Aj])
-        else:
-            dAx = -(v[Ai] * x[Aj]).sum(-1)
-        return dAx, v
-
-    _lu.defvjp(_fwd, _bwd)
-    return _lu(Ax, b)
+    # AD by implicit differentiation (see _implicit_solve); the adjoint
+    # system A^T v = g reuses the same cached factor (trans=1).  The gradient
+    # is db = v, dAx[k] = -v_i x_j for COO entry k at (i, j).
+    return _implicit_solve(
+        Ai,
+        Aj,
+        Ax,
+        b,
+        solve=lambda Ax_, r: _lu_solve_ffi(Ai, Aj, Ax_, r, 0),
+        transpose_solve=lambda Ax_, r: _lu_solve_ffi(Ai, Aj, Ax_, r, 1),
+    )
 
 
 def lu_solve_bcoo(A, b):
@@ -794,7 +871,7 @@ def _make_umf_dispatch(trans):
             Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
         if not b_batched:
             b = jnp.broadcast_to(b, (axis_size,) + b.shape)
-        return _umf_solve_batched(Ai, Aj, Ax, b, trans), True
+        return _nestable(_umf_solve_batched, trans)(Ai, Aj, Ax, b), True
 
     return dispatch
 
@@ -849,27 +926,15 @@ def umf_solve(Ai, Aj, Ax, b):
             f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
         )
 
-    # Same VJP as lu_solve: v solves A^T v = g on the same cached factor, so
-    # db = v and dAx[k] = -v_i x_j for COO entry k at (i, j).
-    @jax.custom_vjp
-    def _umf(Ax, b):
-        return _umf_solve_ffi(Ai, Aj, Ax, b, 0)
-
-    def _fwd(Ax, b):
-        x = _umf_solve_ffi(Ai, Aj, Ax, b, 0)
-        return x, (Ax, x)
-
-    def _bwd(res, g):
-        Ax_saved, x = res
-        v = _umf_solve_ffi(Ai, Aj, Ax_saved, g, 1)  # A^T v = g
-        if x.ndim == 1:
-            dAx = -(v[Ai] * x[Aj])
-        else:
-            dAx = -(v[Ai] * x[Aj]).sum(-1)
-        return dAx, v
-
-    _umf.defvjp(_fwd, _bwd)
-    return _umf(Ax, b)
+    # Same AD as lu_solve, with UMFPACK's transpose solve on the cached factor.
+    return _implicit_solve(
+        Ai,
+        Aj,
+        Ax,
+        b,
+        solve=lambda Ax_, r: _umf_solve_ffi(Ai, Aj, Ax_, r, 0),
+        transpose_solve=lambda Ax_, r: _umf_solve_ffi(Ai, Aj, Ax_, r, 1),
+    )
 
 
 def umf_solve_bcoo(A, b):
