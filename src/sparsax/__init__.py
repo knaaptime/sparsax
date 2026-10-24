@@ -52,6 +52,8 @@ fixed. The UMFPACK path mirrors the KLU one function for function
 :func:`umf_solve_factor` / :func:`umf_logdet_factor`).
 """
 
+import functools
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -76,6 +78,7 @@ __all__ = [
     "logdet_factor",
     "sample_gaussian",
     "update_solve",
+    "argmax_logprob",
     "lu_solve",
     "lu_solve_bcoo",
     "lu_logdet",
@@ -129,6 +132,11 @@ jax.ffi.register_ffi_target(
 jax.ffi.register_ffi_target(
     "sparsax_updown_solve_f64",
     _cpp.updown_solve_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_argmax_logprob_f64",
+    _cpp.argmax_logprob_f64_capsule(),
     platform="cpu",
 )
 jax.ffi.register_ffi_target(
@@ -1687,6 +1695,158 @@ def update_solve(Ai, Aj, Ax, C, b, downdate=False, mode=MODE_A, return_logdet=Fa
         downdate=np.int64(1 if downdate else 0),
     )
     return (x, ld) if return_logdet else x
+
+
+def _argmax_logprob_ffi(Ai, Aj, Ax, mean, chosen, competitors, keys, n_draws, seed, want_grad):
+    n_paths, n = mean.shape
+    call = jax.ffi.ffi_call(
+        "sparsax_argmax_logprob_f64",
+        (
+            jax.ShapeDtypeStruct((n_paths,), jnp.float64),
+            jax.ShapeDtypeStruct((n_paths, n) if want_grad else (0,), jnp.float64),
+        ),
+        vmap_method="sequential",
+    )
+    return call(
+        Ai,
+        Aj,
+        Ax,
+        mean,
+        chosen,
+        competitors,
+        keys,
+        n_draws=np.int64(n_draws),
+        seed=np.int64(seed),
+        want_grad=np.int64(1 if want_grad else 0),
+    )
+
+
+@functools.partial(jax.custom_vjp, nondiff_argnums=(7, 8))
+def _argmax_logprob(mean, Ai, Aj, Ax, chosen, competitors, keys, n_draws, seed):
+    return _argmax_logprob_ffi(
+        Ai, Aj, Ax, mean, chosen, competitors, keys, n_draws, seed, False
+    )[0]
+
+
+def _argmax_logprob_fwd(mean, Ai, Aj, Ax, chosen, competitors, keys, n_draws, seed):
+    logp, grad = _argmax_logprob_ffi(
+        Ai, Aj, Ax, mean, chosen, competitors, keys, n_draws, seed, True
+    )
+    return logp, grad
+
+
+def _argmax_logprob_bwd(n_draws, seed, grad, ct):
+    # Only ``mean`` is differentiable; the caller stop-gradients ``Ax``.
+    return (ct[:, None] * grad, None, None, None, None, None, None)
+
+
+_argmax_logprob.defvjp(_argmax_logprob_fwd, _argmax_logprob_bwd)
+
+
+def argmax_logprob(
+    Ai, Aj, Ax, mean, chosen, competitors=None, n_draws=100, seed=0, keys=None
+):
+    """Log-probability that ``chosen`` is the largest component of a sparse-precision Gaussian.
+
+    For ``x ~ N(mean, A^{-1})`` with ``A`` the SPD *precision*, returns
+    ``log P(argmax_k x_k = chosen)``: the choice probability of a multinomial
+    probit whose utilities form a Gaussian Markov random field (a spatial
+    multinomial probit, say, with ``A = (I - ρW)'(I - ρW)``).  It is estimated
+    by the GHK simulator, run on the sparse factor of ``A`` rather than on the
+    dense covariance of the utility differences, so a draw costs
+    ``O(nnz(L))`` rather than ``O(n^2)``: the differences' precision is
+    ``A_{-j,-j} - v v'/c`` (``v = (A 1)_{-j}``, ``c = 1'A1``), and the rank-one
+    term has a closed-form factor.
+
+    ``A`` must be symmetric positive definite, but the model behind it need
+    not be symmetric: for a SAR with any weights ``W``, directed or not,
+    ``A = M'M`` with ``M = I - ρW`` is SPD whenever ``M`` is nonsingular, so
+    CHOLMOD always applies and no LU backend is needed.  The same cached
+    factor gives the means: ``M^{-1} X β = A^{-1} M' X β``, one
+    :func:`solve`.
+
+    The estimate is unbiased for the probability (so slightly biased low for
+    its log, by about half the relative variance), and its variance depends on
+    the order in which the alternatives are drawn: those most likely to beat
+    ``chosen`` should come first.  Pass them as ``competitors``, e.g. the
+    ``K ≈ 10-30`` alternatives with the largest ``mean``; they are moved to the
+    end of the elimination order (``cholmod_rowdel`` plus a dense ``K x K``
+    block) while everything else keeps the fill-reducing order.  Without them,
+    variance grows quickly with ``n``.
+
+    Draws are a fixed function of ``(seed, keys[p], draw, step)``, so repeated
+    calls reproduce them and the result is a smooth function of ``mean``, as
+    simulated maximum likelihood needs; the competitor lists fix the variable
+    order, so hold them fixed while optimizing.  All paths share one cached
+    factorization of ``A`` and run in parallel (``SPARSAX_NUM_THREADS``).
+
+    Differentiable in ``mean`` by reverse mode (``jax.grad``, ``jax.vjp``): the
+    handler computes ``d logp / d mean`` with a reverse sweep through the
+    recursion, at about the cost of the forward pass.  ``A`` is treated as
+    fixed (its gradient is zero), and there is no forward-mode rule.
+
+    Memory: each worker thread holds about ``2 * n * n_draws`` float64 values
+    of per-draw state (``4 * n * n_draws`` with gradients), e.g. 8 MB at
+    ``n = 5000`` and 100 draws.
+
+    Args:
+        Ai, Aj, Ax: COO of the SPD precision ``A``, as in :func:`solve`.
+        mean: ``[n]`` or ``[n_paths, n]`` float64 — means of ``x``.
+        chosen: int or ``[n_paths]`` int — the index whose maximality is scored.
+        competitors: ``None`` or ``[n_paths, K]`` int — per path, the indices to
+            draw first, most competitive first; ``-1`` marks an unused slot.
+            Must not contain ``chosen`` or repeat an index.
+        n_draws: GHK draws per path (static).
+        seed: integer seed (static).
+        keys: ``None`` or ``[n_paths]`` int — per-path keys for the draws
+            (default ``arange(n_paths)``).  Give each decision-maker a stable
+            key to keep their draws fixed across calls and batchings.
+
+    Returns:
+        ``[n_paths]`` float64 log-probabilities, or a scalar for 1D ``mean``.
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError("Ai, Aj, Ax must be 1D with equal lengths")
+    mean = jnp.asarray(mean, jnp.float64)
+    single = mean.ndim == 1
+    if single:
+        mean = mean[None, :]
+    if mean.ndim != 2:
+        raise ValueError(f"mean must be 1D or 2D, got shape {mean.shape}")
+    n_paths = mean.shape[0]
+    chosen = jnp.broadcast_to(jnp.asarray(chosen, jnp.int32), (n_paths,))
+    if competitors is None:
+        competitors = jnp.zeros((n_paths, 0), jnp.int32)
+    competitors = jnp.asarray(competitors, jnp.int32)
+    if competitors.ndim == 1:
+        competitors = competitors[None, :]
+    if competitors.ndim != 2 or competitors.shape[0] != n_paths:
+        raise ValueError(
+            f"competitors must have shape (n_paths, K), got {competitors.shape}"
+        )
+    keys = (
+        jnp.arange(n_paths, dtype=jnp.int64)
+        if keys is None
+        else jnp.broadcast_to(jnp.asarray(keys, jnp.int64), (n_paths,))
+    )
+    if int(n_draws) < 1:
+        raise ValueError("n_draws must be >= 1")
+    out = _argmax_logprob(
+        mean,
+        Ai,
+        Aj,
+        jax.lax.stop_gradient(Ax),
+        chosen,
+        competitors,
+        keys,
+        int(n_draws),
+        int(seed),
+    )
+    return out[0] if single else out
 
 
 def _bcoo_parts(A):
