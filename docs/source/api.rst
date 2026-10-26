@@ -27,6 +27,7 @@ pay for the numeric refactorization.
    factor_solve
    sample_gaussian
    update_solve
+   argmax_logprob
    solve_bcoo
    logdet_bcoo
    update_solve_bcoo

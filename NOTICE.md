@@ -37,7 +37,8 @@ GPL-2.0-or-later**.
 Not theoretically — these are called on ordinary code paths:
 
 - **CHOLMOD Modify**, via `cholmod_updown`, is what `update_solve` and
-  `update_solve_bcoo` are built on.
+  `update_solve_bcoo` are built on, and via `cholmod_rowdel`, what
+  `argmax_logprob` is built on.
 - **CHOLMOD Supernodal**, via `cholmod_factorize` under CHOLMOD's default
   `AUTO` strategy, which selects the supernodal factorization for suitable
   matrices. `set_options(supernodal=...)` selects it explicitly.
@@ -68,7 +69,7 @@ it.
 
 A build reaching no GPL code is possible in principle but is not a supported
 configuration: it would require dropping the UMFPACK backend entirely, dropping
-`update_solve` / `update_solve_bcoo` (CHOLMOD Modify), and forcing
+`update_solve` / `update_solve_bcoo` and `argmax_logprob` (CHOLMOD Modify), and forcing
 `supernodal=off` so `cholmod_factorize` stays in the LGPL simplicial path. That
 removes a large part of why the package exists, so it is not offered. Open an
 issue if you have a concrete need for it.

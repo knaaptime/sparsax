@@ -30,7 +30,7 @@ than `scipy.sparse.linalg.splu`, while running entirely inside `jax.jit`.
 
 - **CHOLMOD** — `solve`, `logdet`, `selinv` (selected inverse), `factor_solve`,
   `sample_gaussian`, `update_solve` (rank-k update/downdate) for symmetric positive definite
-  `A`.
+  `A`, and `argmax_logprob` (GHK choice probabilities of a sparse-precision Gaussian).
 - **KLU** — `lu_solve`, `lu_logdet`, `lu_factor` / `lu_solve_factor` for general
   non-symmetric `A` (e.g. `A = I − ρW` with a row-standardised spatial weights matrix).
 - **UMFPACK** — `umf_solve`, `umf_logdet`, `umf_factor` / `umf_solve_factor`: the same API
@@ -281,6 +281,35 @@ forward and reverse mode, including exact Hessians and Hessian-vector products f
 trust-region methods. `logdet`'s rule is first-order only, and neither `lu_logdet` nor
 `umf_logdet` is differentiable.
 
+## Choice probabilities: `argmax_logprob`
+
+`argmax_logprob` scores which component of a sparse-precision Gaussian is largest:
+`log P(argmax_k x_k = j)` for `x ~ N(mean, A⁻¹)`. That is the choice probability of a
+multinomial probit whose utilities form a Gaussian Markov random field, such as a spatial
+multinomial probit with `A = (I − ρW)'(I − ρW)`. It runs the GHK simulator on the sparse factor
+of `A` rather than on the dense covariance of the utility differences, so a draw costs
+`O(nnz(L))` instead of `O(n²)`: the differences' precision is sparse minus a rank-one term with
+a closed-form factor, and each path deletes its chosen index from one cached factor with
+`cholmod_rowdel`.
+
+```python
+# mean: one row per decision-maker; chosen[p]: the index they picked
+masked = mean.at[jnp.arange(len(chosen)), chosen].set(-jnp.inf)
+comp = jnp.argsort(-masked, axis=1)[:, :30]        # the 30 likeliest rivals, drawn first
+logp = sparsax.argmax_logprob(Ai, Aj, Ax, mean, chosen, comp, n_draws=200, keys=ids)
+grad = jax.grad(lambda m: sparsax.argmax_logprob(Ai, Aj, Ax, m, chosen, comp).sum())(mean)
+```
+
+Draws are a fixed function of `(seed, keys[p], draw, step)`, so the simulated log-likelihood is
+reproducible across calls and batchings and smooth in `mean`, which simulated maximum
+likelihood needs. GHK's variance depends on the order of the draws, and it grows quickly with
+`n` unless the rivals most likely to beat the chosen index come first: pass them as
+`competitors`, which are moved to the end of the elimination order (one `cholmod_rowdel` each
+plus a dense block) while everything else keeps the fill-reducing order. The gradient with
+respect to `mean` is a reverse sweep through the recursion at about 1.8× the cost of the value;
+`A` is held fixed. With `n = 5,000`, 4,000 paths, 100 draws and 30 competitors, a value takes
+about 10 s and a value-and-gradient about 17 s on 16 threads (M-series macOS).
+
 ## Threads
 
 The native libraries are called without a global lock, so concurrent calls (one per MCMC
@@ -362,7 +391,7 @@ BSD-3-Clause is GPL-compatible, so making the combination is fine — but the re
 is not permissive.
 
 This is not incidental: `update_solve` is built on CHOLMOD's `cholmod_updown`
-(Modify), CHOLMOD's default `AUTO` strategy selects the Supernodal factorization,
+(Modify), `argmax_logprob` on its `cholmod_rowdel` (Modify), CHOLMOD's default `AUTO` strategy selects the Supernodal factorization,
 and the whole `umf_*` family is UMFPACK.
 
 *Using* `sparsax` — running it, doing research with it, publishing results — is
