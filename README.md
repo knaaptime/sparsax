@@ -39,7 +39,8 @@ than `scipy.sparse.linalg.splu`, while running entirely inside `jax.jit`.
   *Two LU backends: KLU vs UMFPACK* below.
 - **JIT / `lax.scan`**: the symbolic analysis is computed once and reused across iterations.
 - **`vmap`**: `jax.vmap(solve)` lowers to a *single* native FFI call that loops over the
-  batch in C++ (reusing the cached analysis), rather than XLA per-iteration dispatch.
+  batch in C++ (reusing the cached analysis), rather than XLA per-iteration dispatch. A batch
+  of right-hand sides against fixed values is one multi-column solve on one factor.
   Composes with `grad` (`vmap(grad(solve))` batches too).
 - **Autodiff**: `solve` has a custom reverse-mode VJP in both `Ax` and `b`; `logdet` has one
   in `Ax` via the selected inverse. `lu_solve` is differentiable in `Ax` and `b` (transpose
@@ -202,7 +203,8 @@ cache surviving JIT-compiled iterations.
 Tokens are plain arrays with no destructor, so each backend keeps only its 64 newest
 (`set_token_cache_size` changes it) and releases the rest; a released token raises a
 "stale factor token" error. Hold a token across at most that many newer factorizations of its
-backend, or refactor.
+backend, or refactor. A token works only with its own backend's functions and a `b` of the
+factor's size; anything else raises an error.
 
 Once a pattern's value cache is full (`set_lu_cache_size`, `set_umf_cache_size`,
 `set_num_cache_size`; 32 by default), a factorization at new values reuses the storage of the
@@ -270,9 +272,13 @@ z   = sparsax.selinv(Ai, Aj, Ax, n)   # z[k] == (A^-1)[Ai[k], Aj[k]]
 var = z[Ai == Aj]                      # diag(A^-1): Gaussian marginal variances
 ```
 
-`selinv` shares the factorization cache, is JIT-compilable and `vmap`-able, and costs one
-selected-inversion pass over the factor (`O(nnz(L))`-ish), not `n` solves. `factor_solve` /
-`sample_gaussian` remain forward-only.
+`selinv` shares the factorization cache and is JIT-compilable and `vmap`-able. On a supernodal
+factor, CHOLMOD's automatic choice except on very sparse matrices, it treats each supernode as
+one dense block with BLAS and costs 1.2–1.9× a factorization (M-series macOS, grids and a k-NN
+graph up to `n = 360,000`): 53 ms on a 2-D grid with `n = 90,000`, 132 ms on a 3-D grid with
+`n = 43,000`. A simplicial factor runs one column at a time. So does every factor on Windows,
+where sparsax has no direct BLAS link: it first converts a supernodal factor to simplicial, and
+those two grids take 556 ms and 7.8 s. `factor_solve` / `sample_gaussian` remain forward-only.
 
 `solve`, `lu_solve` and `umf_solve` differentiate by implicit differentiation
 (`jax.lax.custom_linear_solve`): every derivative of `A x = b` is another solve on the same
@@ -306,9 +312,28 @@ likelihood needs. GHK's variance depends on the order of the draws, and it grows
 `n` unless the rivals most likely to beat the chosen index come first: pass them as
 `competitors`, which are moved to the end of the elimination order (one `cholmod_rowdel` each
 plus a dense block) while everything else keeps the fill-reducing order. The gradient with
-respect to `mean` is a reverse sweep through the recursion at about 1.8× the cost of the value;
-`A` is held fixed. With `n = 5,000`, 4,000 paths, 100 draws and 30 competitors, a value takes
-about 10 s and a value-and-gradient about 17 s on 16 threads (M-series macOS).
+respect to `mean` is a reverse sweep through the recursion at about 1.8× the cost of the value.
+There is no gradient with respect to `A`, so one that flows through `Ax` raises an error: wrap
+`Ax` in `jax.lax.stop_gradient` to hold it fixed, or difference in the parameter of `A`, which
+the fixed draws keep smooth. With `n = 5,000`, 4,000 paths, 100 draws and 30 competitors, a value
+takes about 10 s and a value-and-gradient about 17 s on 16 threads (M-series macOS).
+
+## When a factorization fails
+
+A factorization can fail on the numbers: the matrix is not positive definite, it is singular,
+or a value is not finite. By default that raises an error, which aborts the whole computation,
+`vmap` batch included. A sampler needs something else: it should reject a proposal outside the
+valid region, and its other chains should carry on.
+
+```python
+sparsax.set_options(on_failure="nan")
+```
+
+With this option the failed element returns NaN and the rest of the batch is unaffected, in all
+three backends and in the PyTensor frontend. Its gradient is NaN too, and a token from a failed
+factorization gives NaN from every function that takes it. Bad arguments, stale tokens and
+running out of memory still raise. The option applies to the whole process, takes effect at
+once in compiled functions, and leaves the caches alone.
 
 ## Threads
 

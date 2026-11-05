@@ -7,6 +7,10 @@ calls stay exact on a shared factor, on distinct factors, and through a shared
 factor token.
 """
 
+import os
+import subprocess
+import sys
+import textwrap
 from concurrent.futures import ThreadPoolExecutor
 
 import jax
@@ -295,3 +299,37 @@ def test_many_rhs_solve_matches_dense(backend):
             np.testing.assert_allclose(g, g_ref, rtol=1e-11, atol=1e-11)
     finally:
         sparsax.set_options(supernodal="auto")
+
+
+def test_worker_thread_exception_raises_instead_of_aborting():
+    """An exception on a spawned worker must reach Python, not std::terminate.
+
+    n_draws this large makes the first per-draw allocation throw.  In a subprocess
+    because the failure mode is the death of the whole interpreter.
+    """
+    script = textwrap.dedent(
+        """
+        import jax
+        jax.config.update("jax_enable_x64", True)
+        import numpy as np
+        import sparsax
+
+        Ai = np.arange(5, dtype=np.int32)
+        mean = np.zeros((4, 5))
+        chosen = np.zeros(4, dtype=np.int32)
+        try:
+            sparsax.argmax_logprob(Ai, Ai, np.ones(5), mean, chosen, n_draws=2**61)
+        except Exception as e:
+            print("raised:", e)
+        """
+    )
+    env = {**os.environ, "SPARSAX_NUM_THREADS": "4"}
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert "raised:" in proc.stdout

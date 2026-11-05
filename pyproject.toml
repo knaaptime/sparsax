@@ -6,7 +6,9 @@
 # jax the metadata allowed (0.11.0 exposes API 0.3).  jax 0.10.0 exposes 0.3 and
 # is on conda-forge.  Raise this pin together with the runtime floor, never
 # alone.
-requires = ["scikit-build-core>=1.1", "setuptools-scm>=8", "nanobind>=2.0", "jax==0.10.0"]
+# cmake and ninja ride their PyPI wheels, so a build needs no toolchain
+# beyond a C++ compiler and a SuiteSparse to link.
+requires = ["scikit-build-core>=1.1", "cmake>=3.19", "ninja", "setuptools-scm>=8", "nanobind>=2.0", "jax==0.10.0"]
 build-backend = "scikit_build_core.build"
 
 [project]

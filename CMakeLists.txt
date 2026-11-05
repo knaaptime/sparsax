@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.19)
 project(sparsax LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -182,6 +182,23 @@ if(UMFPACK_TARGET)
 else()
     target_include_directories(sparsax_cpp PRIVATE ${UMFPACK_INCLUDE_DIR})
     target_link_libraries(sparsax_cpp PRIVATE ${UMFPACK_LIBRARY})
+endif()
+
+# The supernodal selected inverse calls dtrsm, dsymm and dgemm directly, under the
+# names and integer width in SuiteSparse_config.h, so it uses the same BLAS
+# interface CHOLMOD does.  How those symbols resolve depends on the platform:
+#  - ELF: at load, through libcholmod's own BLAS dependency.  Nothing extra to
+#    link, and the library is exactly CHOLMOD's.
+#  - macOS: a two-level namespace needs them at link time.  Accelerate exports
+#    these LP64 Fortran names on every macOS, and the wheels' CHOLMOD uses it too.
+#  - Windows: would need an import library, which is not wired up, so the selected
+#    inverse keeps its simplicial form there: same answers, slower on large
+#    factors.
+if(APPLE)
+    target_link_libraries(sparsax_cpp PRIVATE "-framework Accelerate")
+    target_compile_definitions(sparsax_cpp PRIVATE SPARSAX_SUPERNODAL_SELINV)
+elseif(UNIX)
+    target_compile_definitions(sparsax_cpp PRIVATE SPARSAX_SUPERNODAL_SELINV)
 endif()
 
 # Embed an RPATH covering every library actually linked (CHOLMOD, and

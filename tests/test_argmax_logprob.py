@@ -213,3 +213,161 @@ class TestErrors:
         bad[0] = 99
         with pytest.raises(Exception, match="out of range"):
             sparsax.argmax_logprob(Ai, Aj, Ax, means, bad, n_draws=10)
+
+
+class TestPrecisionIsNotDifferentiable:
+    """No gradient flows into A, so differentiating through it must not return 0."""
+
+    def test_grad_through_ax_raises(self, problem):
+        Ai, Aj, Ax, _, means, chosen = problem
+
+        def f(scale):
+            return sparsax.argmax_logprob(
+                Ai, Aj, scale * Ax, means, chosen, n_draws=8
+            ).sum()
+
+        with pytest.raises(ValueError, match="stop_gradient"):
+            jax.grad(f)(1.0)
+
+    def test_grad_through_ax_and_mean_raises(self, problem):
+        Ai, Aj, Ax, _, means, chosen = problem
+
+        def f(scale):
+            return sparsax.argmax_logprob(
+                Ai, Aj, scale * Ax, scale * means, chosen, n_draws=8
+            ).sum()
+
+        with pytest.raises(ValueError, match="stop_gradient"):
+            jax.grad(f)(1.0)
+
+    def test_stop_gradient_keeps_the_mean_gradient(self, problem):
+        Ai, Aj, Ax, _, means, chosen = problem
+
+        def f(mean, scale):
+            return sparsax.argmax_logprob(
+                Ai, Aj, jax.lax.stop_gradient(scale * Ax), mean, chosen, n_draws=8
+            ).sum()
+
+        g_mean, g_scale = jax.grad(f, argnums=(0, 1))(jnp.asarray(means), 1.0)
+        want = jax.grad(
+            lambda m: sparsax.argmax_logprob(Ai, Aj, Ax, m, chosen, n_draws=8).sum()
+        )(jnp.asarray(means))
+        np.testing.assert_array_equal(g_mean, want)
+        assert float(g_scale) == 0.0
+
+    @pytest.mark.parametrize(
+        "wrap",
+        [
+            lambda f: f,
+            jax.jit,
+            lambda f: jax.jit(lambda m, ax: f(m, ax)),
+        ],
+        ids=["plain", "jit", "jit-closure"],
+    )
+    def test_fixed_ax_does_not_raise(self, problem, wrap):
+        Ai, Aj, Ax, _, means, chosen = problem
+
+        def f(mean, ax):
+            return sparsax.argmax_logprob(Ai, Aj, ax, mean, chosen, n_draws=8).sum()
+
+        g = jax.grad(wrap(f))(jnp.asarray(means), jnp.asarray(Ax))
+        assert np.all(np.isfinite(g)) and np.any(g != 0.0)
+
+    def test_fixed_ax_under_vmap_and_scan_does_not_raise(self, problem):
+        Ai, Aj, Ax, _, means, chosen = problem
+        Ax = jnp.asarray(Ax)
+
+        def one(scale):
+            def step(carry, _):
+                lp = sparsax.argmax_logprob(
+                    Ai, Aj, Ax, scale * jnp.asarray(means), chosen, n_draws=4
+                )
+                return carry + lp.sum(), None
+
+            return jax.lax.scan(step, 0.0, None, length=2)[0]
+
+        g = jax.vmap(jax.grad(one))(jnp.array([1.0, 1.5]))
+        assert np.all(np.isfinite(g))
+
+    def test_unused_output_does_not_raise(self, problem):
+        Ai, Aj, Ax, _, means, chosen = problem
+
+        def f(mean):
+            sparsax.argmax_logprob(Ai, Aj, Ax, mean, chosen, n_draws=4)
+            return jnp.sum(mean)
+
+        np.testing.assert_array_equal(
+            jax.grad(f)(jnp.asarray(means)), np.ones(means.shape)
+        )
+
+    def test_stopped_output_does_not_raise(self, problem):
+        Ai, Aj, Ax, _, means, chosen = problem
+
+        def f(mean):
+            lp = sparsax.argmax_logprob(Ai, Aj, Ax, mean, chosen, n_draws=4)
+            return jnp.sum(mean) + jax.lax.stop_gradient(lp).sum()
+
+        np.testing.assert_array_equal(
+            jax.grad(f)(jnp.asarray(means)), np.ones(means.shape)
+        )
+
+
+MASK64 = 2**64 - 1
+GOLDEN = 0x9E3779B97F4A7C15
+
+
+def _mix64(x):
+    x = ((x ^ (x >> 30)) * 0xBF58476D1CE4E5B9) & MASK64
+    x = ((x ^ (x >> 27)) * 0x94D049BB133111EB) & MASK64
+    return x ^ (x >> 31)
+
+
+def _unxorshift(x, s):
+    y = x
+    for _ in range(64 // s + 1):
+        y = x ^ (y >> s)
+    return y
+
+
+def _unmix64(x):
+    x = _unxorshift(x, 31)
+    x = (x * pow(0x94D049BB133111EB, -1, 2**64)) & MASK64
+    x = _unxorshift(x, 27)
+    x = (x * pow(0xBF58476D1CE4E5B9, -1, 2**64)) & MASK64
+    return _unxorshift(x, 30)
+
+
+def _key_with_all_ones_hash(seed):
+    """A key whose first draw's first hash is 2^64 - 1, the largest possible.
+
+    mix64 is a bijection, so the path (seed, key, draw 0, step 0) -> hash can be
+    walked backwards.  This reaches a tail event of probability 2^-53 per uniform
+    deterministically.
+    """
+    base = _unmix64(MASK64) ^ GOLDEN  # uniform(): mix64(base ^ (step + golden)), step 0
+    h = _unmix64(base) ^ GOLDEN  # draw_base(): mix64(h ^ (r + golden)), r 0
+    key = (_unmix64(h) ^ _mix64((seed + GOLDEN) & MASK64)) - GOLDEN
+    key &= MASK64
+    return key - 2**64 if key >= 2**63 else key
+
+
+def test_largest_hash_gives_a_finite_draw():
+    """The largest hash must map to a uniform below 1, whose inverse CDF is finite.
+
+    A uniform of exactly 1 made the untruncated branch's inverse CDF inf/inf, and
+    since draws are fixed that (seed, key) stayed NaN on every later call.
+    """
+    n, seed = 4, 7
+    Ai = np.arange(n, dtype=np.int32)
+    mean = np.array([100.0, 0.0, 0.0, 0.0])  # every bound far above 8: untruncated
+    got = sparsax.argmax_logprob(
+        Ai,
+        Ai,
+        np.ones(n),
+        mean,
+        0,
+        n_draws=1,
+        seed=seed,
+        keys=jnp.asarray([_key_with_all_ones_hash(seed)], jnp.int64),
+    )
+    np.testing.assert_allclose(float(got), 0.0, atol=1e-12)

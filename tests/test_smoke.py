@@ -141,11 +141,12 @@ class TestBatching:
             np.testing.assert_allclose(xs[i], np.linalg.solve(A, Bs[i]), rtol=1e-10)
 
     def test_vmap_lowers_to_single_batched_call(self, spd):
-        """vmap must route to the native batched FFI call, exactly once."""
+        """vmap over the values must route to the native batched FFI call, exactly once."""
         Ai, Aj, Ax, A = spd
-        bs = np.ones((4, A.shape[0]))
-        f = jax.jit(jax.vmap(lambda b: sparsax.solve(Ai, Aj, Ax, b)))
-        hlo = f.lower(bs).compile().as_text()
+        b = np.ones(A.shape[0])
+        axs = np.stack([Ax, 2.0 * Ax, 3.0 * Ax, 4.0 * Ax])
+        f = jax.jit(jax.vmap(lambda a: sparsax.solve(Ai, Aj, a, b)))
+        hlo = f.lower(axs).compile().as_text()
         assert hlo.count("sparsax_solve_batched_f64") == 1
 
     def test_vmap_of_grad(self, spd):
