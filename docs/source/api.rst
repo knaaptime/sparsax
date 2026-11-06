@@ -24,6 +24,7 @@ pay for the numeric refactorization.
    solve
    logdet
    selinv
+   rcond
    factor_solve
    sample_gaussian
    update_solve
@@ -70,6 +71,8 @@ Sparse LU solver for general (non-symmetric) matrices, e.g.
    lu_solve
    lu_solve_bcoo
    lu_logdet
+   lu_slogdet
+   lu_rcond
    lu_logdet_bcoo
 
 KLU factor tokens
@@ -100,8 +103,8 @@ ordering across value changes and wins several-fold while the graph is sparse;
 UMFPACK re-pivots on every numeric factorization but is multifrontal and uses
 BLAS3, and wins several-fold once the graph densifies. The crossover falls as
 ``n`` grows (mean degree around 30 at ``n = 1,500``, around 15 at
-``n = 12,000``), so route between them by timing one numeric factorization with
-each rather than by a fixed degree threshold.
+``n = 12,000``), so :func:`lu_backend` routes on KLU's flops per factor entry, which
+depends on the sparsity pattern alone.
 
 :func:`umf_logdet` reads ``log|det(A)|`` from ``umfpack_*_get_determinant``,
 which returns the determinant in mantissa/exponent form. KLU exposes no
@@ -117,6 +120,10 @@ rounding accumulated over ``n`` terms.
    umf_solve
    umf_solve_bcoo
    umf_logdet
+   umf_slogdet
+   umf_rcond
+   lu_backend
+   LUBackend
    umf_logdet_bcoo
 
 UMFPACK factor tokens

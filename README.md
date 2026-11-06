@@ -28,10 +28,10 @@ than `scipy.sparse.linalg.splu`, while running entirely inside `jax.jit`.
 
 ## Features
 
-- **CHOLMOD** — `solve`, `logdet`, `selinv` (selected inverse), `factor_solve`,
+- **CHOLMOD** — `solve`, `logdet`, `selinv` (selected inverse), `rcond`, `factor_solve`,
   `sample_gaussian`, `update_solve` (rank-k update/downdate) for symmetric positive definite
   `A`, and `argmax_logprob` (GHK choice probabilities of a sparse-precision Gaussian).
-- **KLU** — `lu_solve`, `lu_logdet`, `lu_factor` / `lu_solve_factor` for general
+- **KLU** — `lu_solve`, `lu_logdet`, `lu_slogdet`, `lu_rcond`, `lu_factor` / `lu_solve_factor` for general
   non-symmetric `A` (e.g. `A = I − ρW` with a row-standardised spatial weights matrix).
 - **UMFPACK** — `umf_solve`, `umf_logdet`, `umf_factor` / `umf_solve_factor`: the same API
   over SuiteSparse's multifrontal LU, for the same non-symmetric `A`. The two LU backends are
@@ -164,11 +164,22 @@ Measured through `sparsax` on row-standardised distance-band graphs at *n* = 3,0
 | 65.2 | 198,726 | 48.10 | **15.12** | UMFPACK, 3.2× |
 | 160.0 | 483,092 | 154.19 | **85.03** | UMFPACK, 1.8× |
 
-> **Route by measurement, not by a threshold.** The crossover **moves with *n*** — mean degree
-> ≈30 at *n* = 1,500 falling to ≈15 at *n* = 12,000 — so a hardcoded cutoff is wrong at both
-> ends. A factorization is being computed anyway: time one with each backend and route on the
-> result. The probe costs roughly 5–10% of a ρ-node budget, and it is dearest exactly where the
-> choice matters least.
+The crossover moves with *n*, from a mean degree of about 30 at *n* = 1,500 to about 15 at
+*n* = 12,000, so no cutoff on degree works at both ends. One number does decide it: KLU's flops
+per factor entry, roughly the size of a typical front. `lu_backend` computes it and returns the
+faster backend's functions:
+
+```python
+lu = sparsax.lu_backend(Ai, Aj, n)          # workload="logdet" if that is the main use
+x  = lu.solve(Ai, Aj, Ax, b)                # as lu_solve; also factor, logdet, rcond, ...
+```
+
+It chooses UMFPACK above 66 flops per entry, or 47 for a log-determinant, where UMFPACK's lead
+starts sooner. The choice depends on the pattern alone, not on the values or a timing, so a fixed
+seed reproduces the same draws, which timing the two backends would not: a sampler turns a
+difference in rounding into a different chain. On 19 rook and k-NN patterns with `n` from 400 to
+25,600 it chose the faster backend on 18 for each workload, and the misses cost at most 6%
+(`benchmarks/lu_backends.py`, M3 Max). Measuring a pattern costs one KLU factorization, once.
 
 One further asymmetry: `umf_logdet` reads the determinant straight out of
 `umfpack_*_get_determinant`, in mantissa/exponent form (`det = Mx · 10^Ex`). KLU exposes no
@@ -178,6 +189,12 @@ accurate of the two at large *n*, since it does not accumulate rounding over *n*
 (at *n* = 4,000 with `det = 1e4000`, UMFPACK is exact to printed precision and the log-sum
 drifts by ~3e-14 relative). Neither LU logdet is differentiable — that gradient is the full
 selected inverse, which neither backend exposes.
+
+`lu_slogdet` and `umf_slogdet` also return the sign, as `numpy.linalg.slogdet` does, which shows
+when a parameter has carried `I − ρW` across a singularity. `rcond`, `lu_rcond` and `umf_rcond`
+read a cheap reciprocal condition estimate off the factor: the smallest pivot over the largest
+(squared for CHOLMOD, which reports it that way). It is a rough indicator, not a bound, and the
+values are not comparable across backends, because the LU backends scale the rows first.
 
 Iterative refinement is **off** on the UMFPACK path (its own default is two steps), so an
 `umf_solve` costs the same triangular work as its KLU counterpart and the two can be timed

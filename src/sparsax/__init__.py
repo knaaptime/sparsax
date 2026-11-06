@@ -9,8 +9,8 @@ The two LU backends are interchangeable (``lu_*`` for KLU, ``umf_*`` for
 UMFPACK) and differ only in which graph they are fast on: KLU reuses its pivot
 ordering across value changes and wins several-fold while the graph is sparse;
 UMFPACK re-pivots but is frontal and uses BLAS3, and wins several-fold once the
-graph densifies. The crossover moves with ``n``, so pick between them by timing
-a factorization rather than by a degree threshold.
+graph densifies. The crossover moves with ``n``, so :func:`lu_backend` picks between
+them from the sparsity pattern.
 
 The matrix is a symmetric positive definite matrix in COO format. Entries on
 or above the diagonal (``Ai <= Aj``) are used; entries below the diagonal are
@@ -53,6 +53,8 @@ fixed. The UMFPACK path mirrors the KLU one function for function
 """
 
 import functools
+from collections.abc import Callable
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -72,6 +74,13 @@ __all__ = [
     "solve",
     "logdet",
     "selinv",
+    "rcond",
+    "lu_rcond",
+    "umf_rcond",
+    "lu_slogdet",
+    "umf_slogdet",
+    "lu_backend",
+    "LUBackend",
     "factor_solve",
     "factor",
     "solve_factor",
@@ -115,145 +124,8 @@ __all__ = [
     "MODE_PT",
 ]
 
-jax.ffi.register_ffi_target(
-    "sparsax_solve_f64", _cpp.solve_f64_capsule(), platform="cpu"
-)
-jax.ffi.register_ffi_target(
-    "sparsax_solve_batched_f64",
-    _cpp.solve_batched_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_logdet_f64", _cpp.logdet_f64_capsule(), platform="cpu"
-)
-for _target, _capsule in (
-    ("sparsax_logdet_batched_f64", _cpp.logdet_batched_f64_capsule),
-    ("sparsax_selinv_batched_f64", _cpp.selinv_batched_f64_capsule),
-    ("sparsax_factor_batched_f64", _cpp.factor_batched_f64_capsule),
-    ("sparsax_lu_factor_batched_f64", _cpp.lu_factor_batched_f64_capsule),
-    ("sparsax_umf_factor_batched_f64", _cpp.umf_factor_batched_f64_capsule),
-):
-    jax.ffi.register_ffi_target(_target, _capsule(), platform="cpu")
-jax.ffi.register_ffi_target(
-    "sparsax_selinv_f64", _cpp.selinv_f64_capsule(), platform="cpu"
-)
-jax.ffi.register_ffi_target(
-    "sparsax_updown_solve_f64",
-    _cpp.updown_solve_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_argmax_logprob_f64",
-    _cpp.argmax_logprob_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_factor_solve_f64",
-    _cpp.factor_solve_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_factor_solve_batched_f64",
-    _cpp.factor_solve_batched_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_factor_f64", _cpp.factor_f64_capsule(), platform="cpu"
-)
-jax.ffi.register_ffi_target(
-    "sparsax_solve_factor_f64", _cpp.solve_factor_f64_capsule(), platform="cpu"
-)
-jax.ffi.register_ffi_target(
-    "sparsax_solve_factor_batched_f64",
-    _cpp.solve_factor_batched_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_logdet_factor_f64", _cpp.logdet_factor_f64_capsule(), platform="cpu"
-)
-jax.ffi.register_ffi_target(
-    "sparsax_logdet_factor_batched_f64",
-    _cpp.logdet_factor_batched_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_lu_solve_f64", _cpp.lu_solve_f64_capsule(), platform="cpu"
-)
-jax.ffi.register_ffi_target(
-    "sparsax_lu_solve_batched_f64",
-    _cpp.lu_solve_batched_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_lu_factor_f64", _cpp.lu_factor_f64_capsule(), platform="cpu"
-)
-jax.ffi.register_ffi_target(
-    "sparsax_lu_solve_factor_f64",
-    _cpp.lu_solve_factor_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_lu_solve_factor_batched_f64",
-    _cpp.lu_solve_factor_batched_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_lu_logdet_f64", _cpp.lu_logdet_f64_capsule(), platform="cpu"
-)
-jax.ffi.register_ffi_target(
-    "sparsax_lu_logdet_batched_f64",
-    _cpp.lu_logdet_batched_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_lu_logdet_factor_f64",
-    _cpp.lu_logdet_factor_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_lu_logdet_factor_batched_f64",
-    _cpp.lu_logdet_factor_batched_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_umf_solve_f64", _cpp.umf_solve_f64_capsule(), platform="cpu"
-)
-jax.ffi.register_ffi_target(
-    "sparsax_umf_solve_batched_f64",
-    _cpp.umf_solve_batched_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_umf_factor_f64", _cpp.umf_factor_f64_capsule(), platform="cpu"
-)
-jax.ffi.register_ffi_target(
-    "sparsax_umf_solve_factor_f64",
-    _cpp.umf_solve_factor_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_umf_solve_factor_batched_f64",
-    _cpp.umf_solve_factor_batched_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_umf_logdet_f64", _cpp.umf_logdet_f64_capsule(), platform="cpu"
-)
-jax.ffi.register_ffi_target(
-    "sparsax_umf_logdet_batched_f64",
-    _cpp.umf_logdet_batched_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_umf_logdet_factor_f64",
-    _cpp.umf_logdet_factor_f64_capsule(),
-    platform="cpu",
-)
-jax.ffi.register_ffi_target(
-    "sparsax_umf_logdet_factor_batched_f64",
-    _cpp.umf_logdet_factor_batched_f64_capsule(),
-    platform="cpu",
-)
+for _name, _handler in _cpp.ffi_handlers().items():
+    jax.ffi.register_ffi_target(_name, _handler, platform="cpu")
 
 # Solve modes, matching cholmod.h's system codes. MODE_A solves A x = b.
 # The factorization is P'LL'P = A, so e.g. sampling from N(0, A^{-1}) is
@@ -833,6 +705,86 @@ def lu_logdet(Ai, Aj, Ax, n):
     return _lu_logdet_ffi(Ai, Aj, Ax, int(n))
 
 
+def _lu_slogdet_ffi(Ai, Aj, Ax, n):
+    return _matrix_call(
+        "sparsax_lu_slogdet_f64",
+        "sparsax_lu_slogdet_batched_f64",
+        n,
+        lambda _: (2,),
+        jnp.float64,
+    )(Ai, Aj, Ax)
+
+
+def lu_slogdet(Ai, Aj, Ax, n):
+    """Sign and log-absolute-determinant of a sparse matrix via KLU.
+
+    :func:`lu_logdet` with the sign that its absolute value drops, as in
+    :func:`numpy.linalg.slogdet`.  The sign shows when a spatial parameter has crossed a
+    singularity: ``det(I - rho W)`` is positive at ``rho = 0`` and changes sign each
+    time ``rho`` passes the reciprocal of a real eigenvalue of ``W``.  Shares the
+    factor cache with :func:`lu_solve`.  Not differentiable.
+
+    Args:
+        Ai, Aj, Ax, n: as in :func:`lu_logdet`.
+
+    Returns:
+        ``(sign, logabsdet)``, each a float64 scalar; ``sign`` is 1.0 or -1.0.
+
+    Raises:
+        Exception: if ``A`` is singular or holds a non-finite value.
+            ``set_options(on_failure="nan")`` returns NaN for both instead.
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError(
+            f"Ai, Aj, Ax must be 1D with equal lengths, got "
+            f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
+        )
+    out = _lu_slogdet_ffi(Ai, Aj, Ax, int(n))
+    return out[..., 0], out[..., 1]
+
+
+def lu_rcond(Ai, Aj, Ax, n):
+    """A cheap estimate of the reciprocal condition number of ``A``, via KLU.
+
+    The smallest over the largest pivot of ``U``: 1 is perfectly conditioned, and
+    near 0 means nearly singular.  It reads the factor, so it costs nothing beyond
+    the factorization, which it shares with :func:`lu_solve`, but it is a rough
+    indicator rather than a bound.  KLU scales the rows first, so a matrix that is
+    merely badly scaled is not flagged, and values from different backends are not
+    comparable.  Not differentiable.
+
+    Args:
+        Ai, Aj, Ax, n: as in :func:`lu_logdet`.
+
+    Returns:
+        Scalar float64 in ``[0, 1]``.
+
+    Raises:
+        Exception: if ``A`` is exactly singular or holds a non-finite value.
+            ``set_options(on_failure="nan")`` returns NaN instead.
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError(
+            f"Ai, Aj, Ax must be 1D with equal lengths, got "
+            f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
+        )
+    return _matrix_call(
+        "sparsax_lu_rcond_f64",
+        "sparsax_lu_rcond_batched_f64",
+        int(n),
+        lambda _: (),
+        jnp.float64,
+    )(Ai, Aj, Ax)
+
+
 def lu_logdet_bcoo(A):
     """:func:`lu_logdet` for a JAX ``BCOO`` matrix ``A``."""
     Ai, Aj, Ax = _bcoo_parts(A)
@@ -1008,10 +960,8 @@ def lu_logdet_factor(token):
 # Measured on distance-band graphs at n = 3,000, KLU wins ~4-5x at mean degree
 # <= 8 and loses 3.5-8.6x above ~25. But the crossover moves with n — mean
 # degree ~30 at n = 1,500 falling to ~15 at n = 12,000 — so a hardcoded degree
-# threshold is wrong at both ends. Route by measurement instead: a
-# factorization is being computed anyway, so time one with each backend and use
-# the winner. The probe costs roughly 5-10% of a rho-node budget, and it is
-# dearest exactly where the choice matters least.
+# threshold is wrong at both ends. lu_backend routes on KLU's flops per factor
+# entry instead, which depends on the pattern alone.
 #
 # umf_logdet reads log|det(A)| straight out of umfpack_*_get_determinant, which
 # returns the determinant in mantissa/exponent form (det = Mx * 10^Ex). KLU
@@ -1069,7 +1019,7 @@ def umf_solve(Ai, Aj, Ax, b):
     that KLU's pivot-ordering reuse has stopped paying (see the module notes:
     KLU wins several-fold on contiguity-style graphs, UMFPACK wins several-fold
     once mean degree passes roughly 15-30, with the crossover falling as ``n``
-    grows). Time both rather than assuming a threshold.
+    grows). :func:`lu_backend` chooses between them from the pattern.
 
     Args:
         Ai: ``[n_nz]`` int32 — COO row indices.
@@ -1173,6 +1123,156 @@ def umf_logdet(Ai, Aj, Ax, n):
             f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
         )
     return _umf_logdet_ffi(Ai, Aj, Ax, int(n))
+
+
+def umf_slogdet(Ai, Aj, Ax, n):
+    """Sign and log-absolute-determinant of a sparse matrix via UMFPACK.
+
+    The UMFPACK counterpart of :func:`lu_slogdet`, with the same arguments and
+    results.  Not differentiable.
+
+    Returns:
+        ``(sign, logabsdet)``, each a float64 scalar; ``sign`` is 1.0 or -1.0.
+
+    Raises:
+        Exception: if ``A`` is singular or holds a non-finite value.
+            ``set_options(on_failure="nan")`` returns NaN for both instead.
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError(
+            f"Ai, Aj, Ax must be 1D with equal lengths, got "
+            f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
+        )
+    out = _matrix_call(
+        "sparsax_umf_slogdet_f64",
+        "sparsax_umf_slogdet_batched_f64",
+        int(n),
+        lambda _: (2,),
+        jnp.float64,
+    )(Ai, Aj, Ax)
+    return out[..., 0], out[..., 1]
+
+
+def umf_rcond(Ai, Aj, Ax, n):
+    """A cheap estimate of the reciprocal condition number of ``A``, via UMFPACK.
+
+    The UMFPACK counterpart of :func:`lu_rcond`, with the same caveats: the
+    smallest over the largest pivot, after UMFPACK's own row scaling, so a rough
+    indicator and not comparable with other backends.  Not differentiable.
+
+    Returns:
+        Scalar float64 in ``[0, 1]``.
+
+    Raises:
+        Exception: if ``A`` is exactly singular or holds a non-finite value.
+            ``set_options(on_failure="nan")`` returns NaN instead.
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError(
+            f"Ai, Aj, Ax must be 1D with equal lengths, got "
+            f"{Ai.shape}, {Aj.shape}, {Ax.shape}"
+        )
+    return _matrix_call(
+        "sparsax_umf_rcond_f64",
+        "sparsax_umf_rcond_batched_f64",
+        int(n),
+        lambda _: (),
+        jnp.float64,
+    )(Ai, Aj, Ax)
+
+
+class LUBackend(NamedTuple):
+    """One LU backend's functions, all with the ``lu_*`` signatures."""
+
+    name: str  #: ``"klu"`` or ``"umfpack"``
+    solve: Callable
+    factor: Callable
+    solve_factor: Callable
+    logdet: Callable
+    logdet_factor: Callable
+    slogdet: Callable
+    rcond: Callable
+
+
+# KLU's flops per factor entry above which UMFPACK is the faster backend, by what the
+# factor is for.  A log-determinant moves the crossover down, because UMFPACK reads it
+# from the library where KLU sums logarithms.
+_LU_UMFPACK_ABOVE = {"solve": 66.0, "logdet": 47.0}
+_LU_WORK_PER_ENTRY = {}
+
+
+def lu_backend(Ai, Aj, n, backend="auto", workload="solve"):
+    """Choose the faster LU backend for a sparsity pattern.
+
+    KLU's left-looking factorization wins on sparse graphs, such as contiguity and
+    few-neighbour k-NN weights.  UMFPACK's multifrontal one, which hands dense
+    fronts to BLAS, wins once those fronts grow.  One number decides between them:
+    KLU's flops per factor entry, roughly the size of a typical front.  Mean degree
+    does not decide it, because the crossover degree falls as ``n`` grows.
+
+    The choice depends on the pattern alone, never on the values or on a timing, so
+    a fixed seed reproduces the same draws: a sampler turns a 1e-15 difference in
+    rounding into a different chain within a few dozen sweeps.  Measuring the pattern
+    costs one KLU factorization, once per pattern per process.  The thresholds come
+    from an Apple M3 Max; on other hardware they may shift, which moves near-ties.
+
+    Args:
+        Ai, Aj: COO pattern, concrete rather than traced.  Duplicates and the order
+            of entries do not matter.
+        n: matrix dimension.
+        backend: ``"auto"`` (default), or ``"klu"`` or ``"umfpack"`` to pin one.
+        workload: what the factors are mostly for: ``"solve"`` (default) or
+            ``"logdet"``.
+
+    Returns:
+        :class:`LUBackend`, whose ``solve``, ``factor``, ``solve_factor``, ``logdet``,
+        ``logdet_factor``, ``slogdet`` and ``rcond`` have the ``lu_*`` signatures.
+        Tokens belong to the backend that issued them.
+    """
+    if backend not in ("auto", "klu", "umfpack"):
+        raise ValueError(f'backend must be "auto", "klu" or "umfpack", got {backend!r}')
+    if workload not in _LU_UMFPACK_ABOVE:
+        raise ValueError(f"workload must be one of {sorted(_LU_UMFPACK_ABOVE)}")
+    if backend == "auto":
+        Ai = np.ascontiguousarray(Ai, dtype=np.int32)
+        Aj = np.ascontiguousarray(Aj, dtype=np.int32)
+        n = int(n)
+        key = hash((n, Ai.tobytes(), Aj.tobytes()))
+        per_entry = _LU_WORK_PER_ENTRY.get(key)
+        if per_entry is None:
+            work = _cpp.lu_work(Ai, Aj, n)
+            per_entry = work["flops"] / max(work["lnz"] + work["unz"], 1.0)
+            _LU_WORK_PER_ENTRY[key] = per_entry
+        backend = "umfpack" if per_entry > _LU_UMFPACK_ABOVE[workload] else "klu"
+    if backend == "umfpack":
+        return LUBackend(
+            "umfpack",
+            umf_solve,
+            umf_factor,
+            umf_solve_factor,
+            umf_logdet,
+            umf_logdet_factor,
+            umf_slogdet,
+            umf_rcond,
+        )
+    return LUBackend(
+        "klu",
+        lu_solve,
+        lu_factor,
+        lu_solve_factor,
+        lu_logdet,
+        lu_logdet_factor,
+        lu_slogdet,
+        lu_rcond,
+    )
 
 
 def umf_logdet_bcoo(A):
@@ -1382,6 +1482,42 @@ def _selinv_ffi(Ai, Aj, Ax, n):
         "sparsax_selinv_batched_f64",
         n,
         lambda Ai_: Ai_.shape,
+        jnp.float64,
+    )(Ai, Aj, Ax)
+
+
+def rcond(Ai, Aj, Ax, n):
+    """A cheap estimate of the reciprocal condition number of an SPD matrix.
+
+    CHOLMOD's ``(min(diag(L)) / max(diag(L)))^2``: 1 is perfectly conditioned, and
+    near 0 means nearly singular.  It reads the factor, so it costs nothing beyond
+    the factorization, which it shares with :func:`solve`, but it is a rough
+    indicator rather than a bound.  CHOLMOD does not scale the matrix, so a badly
+    scaled matrix also scores low, and values are not comparable with
+    :func:`lu_rcond`, which scales first.  Not differentiable.
+
+    Args:
+        Ai, Aj, Ax: COO matrix as in :func:`solve`.
+        n: matrix dimension (static Python int).
+
+    Returns:
+        Scalar float64 in ``[0, 1]``.
+
+    Raises:
+        Exception: if the matrix is not positive definite.
+            ``set_options(on_failure="nan")`` returns NaN instead.
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError("Ai, Aj, Ax must be 1D with equal lengths")
+    return _matrix_call(
+        "sparsax_rcond_f64",
+        "sparsax_rcond_batched_f64",
+        int(n),
+        lambda _: (),
         jnp.float64,
     )(Ai, Aj, Ax)
 

@@ -159,7 +159,13 @@ execute_process(
 list(APPEND CMAKE_PREFIX_PATH "${NANOBIND_CMAKE_DIR}")
 find_package(nanobind REQUIRED CONFIG)
 
-nanobind_add_module(sparsax_cpp NOMINSIZE src/cpp/sparsax.cpp)
+nanobind_add_module(sparsax_cpp NOMINSIZE
+    src/cpp/module.cpp
+    src/cpp/cholmod_core.cpp
+    src/cpp/cholmod_handlers.cpp
+    src/cpp/ghk.cpp
+    src/cpp/klu.cpp
+    src/cpp/umfpack.cpp)
 
 target_include_directories(sparsax_cpp PRIVATE ${XLA_FFI_INCLUDE_DIR})
 
