@@ -42,7 +42,7 @@
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
-        <link rel="stylesheet" type="text/css" href="../_static/sphinx_immaterial_theme.74c816e3f9967dd6e.min.css?v=6cfe2491" />
+        <link rel="stylesheet" type="text/css" href="../_static/sphinx_immaterial_theme.6efbe22605a23fcd6.min.css?v=b2ceb110" />
         <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
         <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
         <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=91a4ed60" />
@@ -530,6 +530,30 @@
   
   
     <li class="md-nav__item">
+      <a href="sparsax.rcond.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>rcond</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="sparsax.factor_solve.html" class="md-nav__link">
         
   
@@ -584,6 +608,30 @@
   
   <span class="md-ellipsis">
     <span>sparsax.<wbr>update_<wbr>solve</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.argmax_logprob.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>argmax_<wbr>logprob</span>
     
   </span>
   
@@ -779,7 +827,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_1_1_14" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_1_1_16" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -796,14 +844,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3_1_1_14" id="__nav_3_1_1_14_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_3_1_1_16" id="__nav_3_1_1_16_label" tabindex="0">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_3_1_1_14_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3_1_1_14">
+        <nav class="md-nav" data-md-level="4" aria-labelledby="__nav_3_1_1_16_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_1_1_16">
             <span class="md-nav__icon md-icon"></span>
             <span>Factor tokens <wbr>(hold a numeric factor open)</span>
           </label>
@@ -1358,10 +1406,10 @@
 <h1 id="sparsax-logdet-factor">sparsax.logdet_factor<a class="headerlink" href="#sparsax-logdet-factor" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.logdet_factor">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">logdet_factor</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.logdet_factor.token" title="sparsax.logdet_factor.token (Python parameter) — Factor from factor()."><span class="n"><span class="pre">token</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.11.0/sparsax/__init__.py#L1602-L1623"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.logdet_factor" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">logdet_factor</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.logdet_factor.token" title="sparsax.logdet_factor.token (Python parameter) — Factor from factor()."><span class="n"><span class="pre">token</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.12.0/sparsax/__init__.py#L1915-L1936"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.logdet_factor" title="Link to this definition">¶</a></dt>
 <dd><p>Return <code class="docutils literal notranslate"><span class="pre">log|A|</span></code> from a pre-computed factor (no refactor).</p>
 <p>Reads the Cholesky diagonal from the factor held in <code class="docutils literal notranslate"><span class="pre">token</span></code> (from
-<a class="reference internal" href="sparsax.factor.html#sparsax.factor" title="sparsax.factor (Python function) — Factor SPD A once, returning a reusable factor token."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor()</span></code></a>); <code class="docutils literal notranslate"><span class="pre">O(n)</span></code> cost. Forward-only (no autodiff).</p>
+<a class="reference internal" href="sparsax.factor.html#sparsax.factor" title="sparsax.factor (Python function) — Factor SPD A once, returning a reusable factor token."><code class="xref py py-func docutils literal notranslate"><span class="pre">factor()</span></code></a>); <code class="docutils literal notranslate"><span class="pre">O(n)</span></code> cost. Not differentiable.</p>
 <dl class="field-list simple">
 <dt class="field-odd" id="sparsax.logdet_factor-parameters">Parameters<span class="colon">:</span><a class="headerlink" href="#sparsax.logdet_factor-parameters" title="Permalink to this headline">¶</a></dt>
 <dd class="field-odd"><dl class="simple api-field highlight">
@@ -1426,7 +1474,7 @@ it routes to the batched handler (one logdet per chain).</p>
   
     Created using
     <a href="https://www.sphinx-doc.org/" target="_blank" rel="noopener">Sphinx</a>
-    9.1.0.
+    9.2.0.
      and
     <a href="https://github.com/jbms/sphinx-immaterial/" target="_blank" rel="noopener">Sphinx-Immaterial</a>
   

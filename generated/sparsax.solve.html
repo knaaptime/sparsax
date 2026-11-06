@@ -42,7 +42,7 @@
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
-        <link rel="stylesheet" type="text/css" href="../_static/sphinx_immaterial_theme.74c816e3f9967dd6e.min.css?v=6cfe2491" />
+        <link rel="stylesheet" type="text/css" href="../_static/sphinx_immaterial_theme.6efbe22605a23fcd6.min.css?v=b2ceb110" />
         <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
         <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
         <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=91a4ed60" />
@@ -683,6 +683,30 @@
   
   
     <li class="md-nav__item">
+      <a href="sparsax.rcond.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>rcond</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="sparsax.factor_solve.html" class="md-nav__link">
         
   
@@ -737,6 +761,30 @@
   
   <span class="md-ellipsis">
     <span>sparsax.<wbr>update_<wbr>solve</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.argmax_logprob.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>argmax_<wbr>logprob</span>
     
   </span>
   
@@ -1346,7 +1394,7 @@
 <h1 id="sparsax-solve">sparsax.solve<a class="headerlink" href="#sparsax-solve" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.solve">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">solve</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve.Ai" title="sparsax.solve.Ai (Python parameter) — [n_nz] int32 — COO row indices."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve.Aj" title="sparsax.solve.Aj (Python parameter) — [n_nz] int32 — COO column indices."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve.Ax" title="sparsax.solve.Ax (Python parameter) — [n_nz] float64 — COO values."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve.b" title="sparsax.solve.b (Python parameter) — [n] or [n, n_rhs] float64 — right-hand side(s)."><span class="n"><span class="pre">b</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve.mode" title="sparsax.solve.mode (Python parameter) — which system to solve, one of the MODE_* constants. MODE_A (default) solves A x = b; other modes expose the factor parts (e.g."><span class="n"><span class="pre">mode</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="mi">0</span></code></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.11.0/sparsax/__init__.py#L434-L487"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.solve" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">solve</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve.Ai" title="sparsax.solve.Ai (Python parameter) — [n_nz] int32 — COO row indices."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve.Aj" title="sparsax.solve.Aj (Python parameter) — [n_nz] int32 — COO column indices."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve.Ax" title="sparsax.solve.Ax (Python parameter) — [n_nz] float64 — COO values."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve.b" title="sparsax.solve.b (Python parameter) — [n] or [n, n_rhs] float64 — right-hand side(s)."><span class="n"><span class="pre">b</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.solve.mode" title="sparsax.solve.mode (Python parameter) — which system to solve, one of the MODE_* constants. MODE_A (default) solves A x = b; other modes expose the factor parts (e.g."><span class="n"><span class="pre">mode</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="mi">0</span></code></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.12.0/sparsax/__init__.py#L476-L530"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.solve" title="Link to this definition">¶</a></dt>
 <dd><p>Solve <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">x</span> <span class="pre">=</span> <span class="pre">b</span></code> for symmetric positive definite sparse <code class="docutils literal notranslate"><span class="pre">A</span></code>.</p>
 <p>Works inside <code class="docutils literal notranslate"><span class="pre">&#64;jax.jit</span></code>; the sparsity pattern’s symbolic analysis is
 computed once and cached across calls.</p>
@@ -1372,8 +1420,9 @@ factor parts (e.g. <code class="docutils literal notranslate"><span class="pre">
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">x</span></code> with the same shape as <code class="docutils literal notranslate"><span class="pre">b</span></code>.</p>
 </dd>
 <dt class="field-odd" id="sparsax.solve-raises">Raises<span class="colon">:</span><a class="headerlink" href="#sparsax.solve-raises" title="Permalink to this headline">¶</a></dt>
-<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#Exception" title="(in Python v3.14)"><strong>Exception</strong></a> – if the matrix is not positive definite (raised by the XLA
-    runtime with the CHOLMOD failure column in the message).</p>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#Exception" title="(in Python v3.15)"><strong>Exception</strong></a> – if the matrix is not positive definite (raised by the XLA
+    runtime with the CHOLMOD failure column in the message).
+    <code class="docutils literal notranslate"><span class="pre">set_options(on_failure=&quot;nan&quot;)</span></code> returns NaN instead.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1423,7 +1472,7 @@ factor parts (e.g. <code class="docutils literal notranslate"><span class="pre">
   
     Created using
     <a href="https://www.sphinx-doc.org/" target="_blank" rel="noopener">Sphinx</a>
-    9.1.0.
+    9.2.0.
      and
     <a href="https://github.com/jbms/sphinx-immaterial/" target="_blank" rel="noopener">Sphinx-Immaterial</a>
   

@@ -42,7 +42,7 @@
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
-        <link rel="stylesheet" type="text/css" href="../_static/sphinx_immaterial_theme.74c816e3f9967dd6e.min.css?v=6cfe2491" />
+        <link rel="stylesheet" type="text/css" href="../_static/sphinx_immaterial_theme.6efbe22605a23fcd6.min.css?v=b2ceb110" />
         <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
         <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
         <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=91a4ed60" />
@@ -530,6 +530,30 @@
   
   
     <li class="md-nav__item">
+      <a href="sparsax.rcond.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>rcond</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="sparsax.factor_solve.html" class="md-nav__link">
         
   
@@ -584,6 +608,30 @@
   
   <span class="md-ellipsis">
     <span>sparsax.<wbr>update_<wbr>solve</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.argmax_logprob.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>argmax_<wbr>logprob</span>
     
   </span>
   
@@ -726,7 +774,7 @@
       <span aria-label="Python function" class="objinfo-icon objinfo-icon__procedure" title="Python function">F</span>
     
     <span class="md-ellipsis">
-      <span title="sparsax.set_options (Python function) — Configure CHOLMOD behavior."><span>sparsax.<wbr>set_<wbr>options</span></span>
+      <span title="sparsax.set_options (Python function) — Configure sparsax for this process.  An option left out keeps its value."><span>sparsax.<wbr>set_<wbr>options</span></span>
     </span>
   </a>
   
@@ -750,7 +798,31 @@
       <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
     
     <span class="md-ellipsis">
-      <span title="sparsax.set_options.supernodal (Python parameter) — &#34;auto&#34; (CHOLMOD decides, default), &#34;simplicial&#34; (faster triangular solves on very sparse matrices), or &#34;supernodal&#34; (BLAS-based, faster factorization on denser problems)."><span>supernodal</span></span>
+      <span title="sparsax.set_options.supernodal (Python parameter) — &#34;auto&#34; (CHOLMOD decides, the initial value), &#34;simplicial&#34; (faster triangular solves on very sparse matrices), or &#34;supernodal&#34; (BLAS-based, faster factorization on denser problems)."><span>supernodal</span></span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sparsax.set_options.on_failure" class="md-nav__link">
+    
+      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
+    
+    <span class="md-ellipsis">
+      <span title="sparsax.set_options.on_failure (Python parameter) — what a factorization that fails on the numbers does, in every backend and in the PyTensor frontend: the matrix is not positive definite, or it is singular, or a value is not finite. &#34;raise&#34; (the initial value) raises an error, which aborts the whole computation, vmap batch included."><span>on_<wbr>failure</span></span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sparsax.set_options.ordering" class="md-nav__link">
+    
+      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
+    
+    <span class="md-ellipsis">
+      <span title="sparsax.set_options.ordering (Python parameter) — the fill-reducing ordering behind CHOLMOD&#39;s analysis. &#34;auto&#34; (the initial value) lets CHOLMOD try AMD and turn to METIS when AMD&#39;s fill looks poor."><span>ordering</span></span>
     </span>
   </a>
   
@@ -1143,7 +1215,7 @@
       <span aria-label="Python function" class="objinfo-icon objinfo-icon__procedure" title="Python function">F</span>
     
     <span class="md-ellipsis">
-      <span title="sparsax.set_options (Python function) — Configure CHOLMOD behavior."><span>sparsax.<wbr>set_<wbr>options</span></span>
+      <span title="sparsax.set_options (Python function) — Configure sparsax for this process.  An option left out keeps its value."><span>sparsax.<wbr>set_<wbr>options</span></span>
     </span>
   </a>
   
@@ -1167,7 +1239,31 @@
       <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
     
     <span class="md-ellipsis">
-      <span title="sparsax.set_options.supernodal (Python parameter) — &#34;auto&#34; (CHOLMOD decides, default), &#34;simplicial&#34; (faster triangular solves on very sparse matrices), or &#34;supernodal&#34; (BLAS-based, faster factorization on denser problems)."><span>supernodal</span></span>
+      <span title="sparsax.set_options.supernodal (Python parameter) — &#34;auto&#34; (CHOLMOD decides, the initial value), &#34;simplicial&#34; (faster triangular solves on very sparse matrices), or &#34;supernodal&#34; (BLAS-based, faster factorization on denser problems)."><span>supernodal</span></span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sparsax.set_options.on_failure" class="md-nav__link">
+    
+      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
+    
+    <span class="md-ellipsis">
+      <span title="sparsax.set_options.on_failure (Python parameter) — what a factorization that fails on the numbers does, in every backend and in the PyTensor frontend: the matrix is not positive definite, or it is singular, or a value is not finite. &#34;raise&#34; (the initial value) raises an error, which aborts the whole computation, vmap batch included."><span>on_<wbr>failure</span></span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sparsax.set_options.ordering" class="md-nav__link">
+    
+      <span aria-label="Python parameter" class="objinfo-icon objinfo-icon__sub-data" title="Python parameter">p</span>
+    
+    <span class="md-ellipsis">
+      <span title="sparsax.set_options.ordering (Python parameter) — the fill-reducing ordering behind CHOLMOD&#39;s analysis. &#34;auto&#34; (the initial value) lets CHOLMOD try AMD and turn to METIS when AMD&#39;s fill looks poor."><span>ordering</span></span>
     </span>
   </a>
   
@@ -1209,17 +1305,36 @@
 
 <h1 id="sparsax-set-options">sparsax.set_options<a class="headerlink" href="#sparsax-set-options" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
-<dt class="sig sig-object highlight py" id="sparsax.set_options">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">set_options</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.set_options.supernodal" title="sparsax.set_options.supernodal (Python parameter) — &quot;auto&quot; (CHOLMOD decides, default), &quot;simplicial&quot; (faster triangular solves on very sparse matrices), or &quot;supernodal&quot; (BLAS-based, faster factorization on denser problems)."><span class="n"><span class="pre">supernodal</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="s1">'auto'</span></code></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.11.0/sparsax/__init__.py#L1748-L1762"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.set_options" title="Link to this definition">¶</a></dt>
-<dd><p>Configure CHOLMOD behavior.</p>
+<dt class="sig sig-object highlight sig-wrap py" id="sparsax.set_options">
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">set_options</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.set_options.supernodal" title="sparsax.set_options.supernodal (Python parameter) — &quot;auto&quot; (CHOLMOD decides, the initial value), &quot;simplicial&quot; (faster triangular solves on very sparse matrices), or &quot;supernodal&quot; (BLAS-based, faster factorization on denser problems)."><span class="n"><span class="pre">supernodal</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">None</span></code></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.set_options.on_failure" title="sparsax.set_options.on_failure (Python parameter) — what a factorization that fails on the numbers does, in every backend and in the PyTensor frontend: the matrix is not positive definite, or it is singular, or a value is not finite. &quot;raise&quot; (the initial value) raises an error, which aborts the whole computation, vmap batch included."><span class="n"><span class="pre">on_failure</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">None</span></code></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.set_options.ordering" title="sparsax.set_options.ordering (Python parameter) — the fill-reducing ordering behind CHOLMOD's analysis. &quot;auto&quot; (the initial value) lets CHOLMOD try AMD and turn to METIS when AMD's fill looks poor."><span class="n"><span class="pre">ordering</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">None</span></code></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.12.0/sparsax/__init__.py#L2288-L2332"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.set_options" title="Link to this definition">¶</a></dt>
+<dd><p>Configure sparsax for this process.  An option left out keeps its value.</p>
 <dl class="field-list simple">
 <dt class="field-odd" id="sparsax.set_options-parameters">Parameters<span class="colon">:</span><a class="headerlink" href="#sparsax.set_options-parameters" title="Permalink to this headline">¶</a></dt>
 <dd class="field-odd"><dl class="simple api-field highlight">
-<dt id="sparsax.set_options.supernodal"><span class="n sig-name">supernodal</span><span class="o">=</span><code class="code python default_value docutils literal highlight highlight-python"><span class="s1">'auto'</span></code><a class="headerlink" href="#sparsax.set_options.supernodal" title="Permalink to this definition">¶</a></dt><dd><p><code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> (CHOLMOD decides, default), <code class="docutils literal notranslate"><span class="pre">&quot;simplicial&quot;</span></code>
-(faster triangular solves on very sparse matrices), or
-<code class="docutils literal notranslate"><span class="pre">&quot;supernodal&quot;</span></code> (BLAS-based, faster factorization on denser
+<dt id="sparsax.set_options.supernodal"><span class="n sig-name">supernodal</span><span class="o">=</span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">None</span></code><a class="headerlink" href="#sparsax.set_options.supernodal" title="Permalink to this definition">¶</a></dt><dd><p><code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> (CHOLMOD decides, the initial value),
+<code class="docutils literal notranslate"><span class="pre">&quot;simplicial&quot;</span></code> (faster triangular solves on very sparse matrices),
+or <code class="docutils literal notranslate"><span class="pre">&quot;supernodal&quot;</span></code> (BLAS-based, faster factorization on denser
 problems). Clears the factorization cache so the setting applies
 to all patterns.</p>
+</dd>
+<dt id="sparsax.set_options.on_failure"><span class="n sig-name">on_failure</span><span class="o">=</span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">None</span></code><a class="headerlink" href="#sparsax.set_options.on_failure" title="Permalink to this definition">¶</a></dt><dd><p>what a factorization that fails on the numbers does, in
+every backend and in the PyTensor frontend: the matrix is not
+positive definite, or it is singular, or a value is not finite.
+<code class="docutils literal notranslate"><span class="pre">&quot;raise&quot;</span></code> (the initial value) raises an error, which aborts the
+whole computation, <code class="docutils literal notranslate"><span class="pre">vmap</span></code> batch included.  <code class="docutils literal notranslate"><span class="pre">&quot;nan&quot;</span></code> returns NaN for
+the failed element and leaves the others alone, so a sampler can
+reject the proposal and its other chains carry on: gradients and
+tokens from a failed factorization are NaN too.  Other errors, such as
+bad arguments or a stale token, always raise.  It takes effect at
+once, in functions already compiled, and leaves the caches alone.</p>
+</dd>
+<dt id="sparsax.set_options.ordering"><span class="n sig-name">ordering</span><span class="o">=</span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">None</span></code><a class="headerlink" href="#sparsax.set_options.ordering" title="Permalink to this definition">¶</a></dt><dd><p>the fill-reducing ordering behind CHOLMOD’s analysis.
+<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> (the initial value) lets CHOLMOD try AMD and turn to METIS
+when AMD’s fill looks poor.  <code class="docutils literal notranslate"><span class="pre">&quot;amd&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;metis&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;nesdis&quot;</span></code>
+use that ordering, and <code class="docutils literal notranslate"><span class="pre">&quot;best&quot;</span></code> tries all three and keeps the
+cheapest.  Only the speed changes, never the answers.  Clears the
+factorization cache, like <code class="docutils literal notranslate"><span class="pre">supernodal</span></code>.  KLU and UMFPACK keep their
+own orderings.</p>
 </dd>
 </dl>
 </dd>
@@ -1271,7 +1386,7 @@ to all patterns.</p>
   
     Created using
     <a href="https://www.sphinx-doc.org/" target="_blank" rel="noopener">Sphinx</a>
-    9.1.0.
+    9.2.0.
      and
     <a href="https://github.com/jbms/sphinx-immaterial/" target="_blank" rel="noopener">Sphinx-Immaterial</a>
   

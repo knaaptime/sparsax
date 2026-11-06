@@ -1,0 +1,6 @@
+﻿sparsax.lu\_slogdet
+===================
+
+.. currentmodule:: sparsax
+
+.. autofunction:: lu_slogdet

@@ -1,0 +1,37 @@
+﻿sparsax.LUBackend
+=================
+
+.. currentmodule:: sparsax
+
+.. autoclass:: LUBackend
+
+   
+   .. automethod:: __init__
+
+   
+   .. rubric:: Methods
+
+   .. autosummary::
+   
+      ~LUBackend.__init__
+      ~LUBackend.count
+      ~LUBackend.index
+   
+   
+
+   
+   
+   .. rubric:: Attributes
+
+   .. autosummary::
+   
+      ~LUBackend.factor
+      ~LUBackend.logdet
+      ~LUBackend.logdet_factor
+      ~LUBackend.name
+      ~LUBackend.rcond
+      ~LUBackend.slogdet
+      ~LUBackend.solve
+      ~LUBackend.solve_factor
+   
+   

@@ -1,0 +1,6 @@
+﻿sparsax.set\_token\_cache\_size
+===============================
+
+.. currentmodule:: sparsax
+
+.. autofunction:: set_token_cache_size

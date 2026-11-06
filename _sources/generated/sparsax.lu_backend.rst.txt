@@ -1,0 +1,6 @@
+﻿sparsax.lu\_backend
+===================
+
+.. currentmodule:: sparsax
+
+.. autofunction:: lu_backend

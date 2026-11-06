@@ -1,0 +1,6 @@
+﻿sparsax.lu\_rcond
+=================
+
+.. currentmodule:: sparsax
+
+.. autofunction:: lu_rcond

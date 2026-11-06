@@ -11,7 +11,7 @@
       
       
       
-        <link rel="prev" href="sparsax.selinv.html">
+        <link rel="prev" href="sparsax.rcond.html">
       
       
         <link rel="next" href="sparsax.sample_gaussian.html">
@@ -42,7 +42,7 @@
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
-        <link rel="stylesheet" type="text/css" href="../_static/sphinx_immaterial_theme.74c816e3f9967dd6e.min.css?v=6cfe2491" />
+        <link rel="stylesheet" type="text/css" href="../_static/sphinx_immaterial_theme.6efbe22605a23fcd6.min.css?v=b2ceb110" />
         <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
         <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
         <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=91a4ed60" />
@@ -526,6 +526,30 @@
                 
   
   
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.rcond.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>rcond</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
     
@@ -739,6 +763,30 @@
   
   <span class="md-ellipsis">
     <span>sparsax.<wbr>update_<wbr>solve</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.argmax_logprob.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>argmax_<wbr>logprob</span>
     
   </span>
   
@@ -1350,7 +1398,7 @@
 <h1 id="sparsax-factor-solve">sparsax.factor_solve<a class="headerlink" href="#sparsax-factor-solve" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.factor_solve">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">factor_solve</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.factor_solve.Ai" title="sparsax.factor_solve.Ai (Python parameter) — COO of the SPD matrix A, as in solve()."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.factor_solve.Aj" title="sparsax.factor_solve.Aj (Python parameter) — COO of the SPD matrix A, as in solve()."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.factor_solve.Ax" title="sparsax.factor_solve.Ax (Python parameter) — COO of the SPD matrix A, as in solve()."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.factor_solve.rhs" title="sparsax.factor_solve.rhs (Python parameter) — list of (b, modes)."><span class="n"><span class="pre">rhs</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.factor_solve.want_logdet" title="sparsax.factor_solve.want_logdet (Python parameter) — if True, also return log|A| from the same factor."><span class="n"><span class="pre">want_logdet</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">False</span></code></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.factor_solve.n" title="sparsax.factor_solve.n (Python parameter) — matrix dimension."><span class="n"><span class="pre">n</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">None</span></code></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.11.0/sparsax/__init__.py#L1333-L1403"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.factor_solve" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">factor_solve</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.factor_solve.Ai" title="sparsax.factor_solve.Ai (Python parameter) — COO of the SPD matrix A, as in solve()."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.factor_solve.Aj" title="sparsax.factor_solve.Aj (Python parameter) — COO of the SPD matrix A, as in solve()."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.factor_solve.Ax" title="sparsax.factor_solve.Ax (Python parameter) — COO of the SPD matrix A, as in solve()."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.factor_solve.rhs" title="sparsax.factor_solve.rhs (Python parameter) — list of (b, modes)."><span class="n"><span class="pre">rhs</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.factor_solve.want_logdet" title="sparsax.factor_solve.want_logdet (Python parameter) — if True, also return log|A| from the same factor."><span class="n"><span class="pre">want_logdet</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">False</span></code></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.factor_solve.n" title="sparsax.factor_solve.n (Python parameter) — matrix dimension."><span class="n"><span class="pre">n</span></span></a><span class="o"><span class="pre">=</span></span><code class="code python default_value docutils literal highlight highlight-python"><span class="kc">None</span></code></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.12.0/sparsax/__init__.py#L1651-L1721"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.factor_solve" title="Link to this definition">¶</a></dt>
 <dd><p>Factor <code class="docutils literal notranslate"><span class="pre">A</span></code> once, then run several solve <em>chains</em> from that one factor.</p>
 <p>This is the “factor once, do everything” primitive: <code class="docutils literal notranslate"><span class="pre">A</span></code> (the COO matrix)
 is factored a single time and every requested solve — plus an optional
@@ -1391,7 +1439,7 @@ chain <code class="docutils literal notranslate"><span class="pre">[m0,</span> <
 </dl>
 <div class="note admonition">
 <p class="admonition-title">Note</p>
-<p>This primitive is forward-only (no autodiff rule). Use <a class="reference internal" href="sparsax.solve.html#sparsax.solve" title="sparsax.solve (Python function) — Solve A x = b for symmetric positive definite sparse A."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve()</span></code></a> /
+<p>This primitive has no autodiff rule. Use <a class="reference internal" href="sparsax.solve.html#sparsax.solve" title="sparsax.solve (Python function) — Solve A x = b for symmetric positive definite sparse A."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve()</span></code></a> /
 <a class="reference internal" href="sparsax.logdet.html#sparsax.logdet" title="sparsax.logdet (Python function) — Log-determinant of a symmetric positive definite sparse matrix."><code class="xref py py-func docutils literal notranslate"><span class="pre">logdet()</span></code></a>, which define VJPs, when you need gradients.</p>
 </div>
 </dd></dl>
@@ -1441,7 +1489,7 @@ chain <code class="docutils literal notranslate"><span class="pre">[m0,</span> <
   
     Created using
     <a href="https://www.sphinx-doc.org/" target="_blank" rel="noopener">Sphinx</a>
-    9.1.0.
+    9.2.0.
      and
     <a href="https://github.com/jbms/sphinx-immaterial/" target="_blank" rel="noopener">Sphinx-Immaterial</a>
   

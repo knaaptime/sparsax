@@ -14,7 +14,7 @@
         <link rel="prev" href="sparsax.logdet.html">
       
       
-        <link rel="next" href="sparsax.factor_solve.html">
+        <link rel="next" href="sparsax.rcond.html">
       
       
       <link rel="icon" href="">
@@ -42,7 +42,7 @@
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
-        <link rel="stylesheet" type="text/css" href="../_static/sphinx_immaterial_theme.74c816e3f9967dd6e.min.css?v=6cfe2491" />
+        <link rel="stylesheet" type="text/css" href="../_static/sphinx_immaterial_theme.6efbe22605a23fcd6.min.css?v=b2ceb110" />
         <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
         <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
         <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=91a4ed60" />
@@ -671,6 +671,30 @@
   
   
     <li class="md-nav__item">
+      <a href="sparsax.rcond.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>rcond</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="sparsax.factor_solve.html" class="md-nav__link">
         
   
@@ -725,6 +749,30 @@
   
   <span class="md-ellipsis">
     <span>sparsax.<wbr>update_<wbr>solve</span>
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="sparsax.argmax_logprob.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    <span>sparsax.<wbr>argmax_<wbr>logprob</span>
     
   </span>
   
@@ -1322,11 +1370,13 @@
 <h1 id="sparsax-selinv">sparsax.selinv<a class="headerlink" href="#sparsax-selinv" title="Link to this heading">¶</a></h1>
 <dl class="py function objdesc">
 <dt class="sig sig-object highlight py" id="sparsax.selinv">
-<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">selinv</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.selinv.Ai" title="sparsax.selinv.Ai (Python parameter) — COO matrix as in solve()."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.selinv.Aj" title="sparsax.selinv.Aj (Python parameter) — COO matrix as in solve()."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.selinv.Ax" title="sparsax.selinv.Ax (Python parameter) — COO matrix as in solve()."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.selinv.n" title="sparsax.selinv.n (Python parameter) — matrix dimension (static Python int)."><span class="n"><span class="pre">n</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.11.0/sparsax/__init__.py#L1209-L1236"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.selinv" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">sparsax.</span></span><span class="sig-name descname"><span class="pre">selinv</span></span><span class="sig-paren">(</span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.selinv.Ai" title="sparsax.selinv.Ai (Python parameter) — COO matrix as in solve()."><span class="n"><span class="pre">Ai</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.selinv.Aj" title="sparsax.selinv.Aj (Python parameter) — COO matrix as in solve()."><span class="n"><span class="pre">Aj</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.selinv.Ax" title="sparsax.selinv.Ax (Python parameter) — COO matrix as in solve()."><span class="n"><span class="pre">Ax</span></span></a></em>, </span><span class="sig-param-decl"><em class="sig-param"><a class="n reference internal" href="#sparsax.selinv.n" title="sparsax.selinv.n (Python parameter) — matrix dimension (static Python int)."><span class="n"><span class="pre">n</span></span></a></em></span><span class="sig-paren">)</span><a class="reference external" href="https://github.com/knaaptime/sparsax/blob/v0.12.0/sparsax/__init__.py#L1525-L1554"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#sparsax.selinv" title="Link to this definition">¶</a></dt>
 <dd><p>Selected inverse: entries of <code class="docutils literal notranslate"><span class="pre">A^{-1}</span></code> at <code class="docutils literal notranslate"><span class="pre">A</span></code>’s sparsity pattern.</p>
 <p>Returns <code class="docutils literal notranslate"><span class="pre">z</span></code> with <code class="docutils literal notranslate"><span class="pre">z[k]</span> <span class="pre">==</span> <span class="pre">(A^{-1})[Ai[k],</span> <span class="pre">Aj[k]]</span></code>, computed by
 Takahashi’s recurrence on the Cholesky factor without ever forming the dense
-inverse. Shares the factorization cache with <a class="reference internal" href="sparsax.solve.html#sparsax.solve" title="sparsax.solve (Python function) — Solve A x = b for symmetric positive definite sparse A."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve()</span></code></a> / <a class="reference internal" href="sparsax.logdet.html#sparsax.logdet" title="sparsax.logdet (Python function) — Log-determinant of a symmetric positive definite sparse matrix."><code class="xref py py-func docutils literal notranslate"><span class="pre">logdet()</span></code></a>.</p>
+inverse: one dense block at a time on a supernodal factor, one column at a
+time on a simplicial one. Shares the factorization cache with <a class="reference internal" href="sparsax.solve.html#sparsax.solve" title="sparsax.solve (Python function) — Solve A x = b for symmetric positive definite sparse A."><code class="xref py py-func docutils literal notranslate"><span class="pre">solve()</span></code></a>
+/ <a class="reference internal" href="sparsax.logdet.html#sparsax.logdet" title="sparsax.logdet (Python function) — Log-determinant of a symmetric positive definite sparse matrix."><code class="xref py py-func docutils literal notranslate"><span class="pre">logdet()</span></code></a>.</p>
 <p>This is the quantity <a class="reference internal" href="sparsax.logdet.html#sparsax.logdet" title="sparsax.logdet (Python function) — Log-determinant of a symmetric positive definite sparse matrix."><code class="xref py py-func docutils literal notranslate"><span class="pre">logdet()</span></code></a>’s reverse-mode rule uses
 (<code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">log|A|</span> <span class="pre">/</span> <span class="pre">dA</span> <span class="pre">=</span> <span class="pre">A^{-1}</span></code>), exposed directly because the selected inverse
 is useful on its own — e.g. posterior marginal variances <code class="docutils literal notranslate"><span class="pre">diag(A^{-1})</span></code> of
@@ -1400,7 +1450,7 @@ so entries below the diagonal carry the same value as their transpose.</p>
   
     Created using
     <a href="https://www.sphinx-doc.org/" target="_blank" rel="noopener">Sphinx</a>
-    9.1.0.
+    9.2.0.
      and
     <a href="https://github.com/jbms/sphinx-immaterial/" target="_blank" rel="noopener">Sphinx-Immaterial</a>
   

@@ -1,0 +1,6 @@
+﻿sparsax.argmax\_logprob
+=======================
+
+.. currentmodule:: sparsax
+
+.. autofunction:: argmax_logprob

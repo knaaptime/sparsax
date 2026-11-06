@@ -1,0 +1,6 @@
+﻿sparsax.umf\_rcond
+==================
+
+.. currentmodule:: sparsax
+
+.. autofunction:: umf_rcond

@@ -1,0 +1,6 @@
+﻿sparsax.rcond
+=============
+
+.. currentmodule:: sparsax
+
+.. autofunction:: rcond
