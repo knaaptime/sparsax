@@ -37,10 +37,16 @@ fi
 # never free some of their memory (detect_leaks), and jaxlib bundles its own copies
 # of some libraries (detect_odr_violation).
 export ASAN_OPTIONS=detect_leaks=0:detect_odr_violation=0:halt_on_error=1:strip_env=0
-export TSAN_OPTIONS=halt_on_error=1:report_signal_unsafe=0:strip_env=0
+# die_after_fork: tests that start a subprocess fork from a process earlier tests have
+# left multi-threaded, and the child starts a thread before it execs.
+# ignore_noninstrumented_modules, already the default on macOS: on Linux the interceptors
+# otherwise report races in jaxlib, whose synchronization TSan cannot see.
+export TSAN_OPTIONS=halt_on_error=1:report_signal_unsafe=0:strip_env=0:die_after_fork=0:ignore_noninstrumented_modules=1
 export SPARSAX_TEST_PARALLEL_BATCHES=1
 case "$(uname -s)" in
   Darwin) export DYLD_INSERT_LIBRARIES="$runtime" ;;
   Linux) export LD_PRELOAD="$runtime" ;;
 esac
-exec python -m pytest tests -q "$@"
+# A sanitizer writes its report to fd 2 and halts, so --capture=sys: pytest's default
+# capture holds fd 2 in a file and the report would die with the process.
+exec python -m pytest tests -q --capture=sys "$@"
