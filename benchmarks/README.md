@@ -10,5 +10,6 @@ BLAS; those in the README come from an Apple M3 Max with Accelerate.
 | `chains.py` | a `vmap` over the values of `A`, on one thread and on several |
 | `shared_factor.py` | cached solves from several Python threads on one large pattern |
 | `orderings.py` | fill and timings under each `set_options(ordering=...)` |
+| `lu_backends.py` | whether `lu_backend` picks the faster of KLU and UMFPACK |
 | `ghk_draws.py` | Sobol against independent draws in `argmax_logprob` |
 | `accelerate_dpotri.cpp` | why `selinv` does not call `dpotri`: threaded Accelerate returns wrong values |
