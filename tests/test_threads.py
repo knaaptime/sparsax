@@ -318,7 +318,10 @@ def test_worker_thread_exception_raises_instead_of_aborting():
         mean = np.zeros((4, 5))
         chosen = np.zeros(4, dtype=np.int32)
         try:
-            sparsax.argmax_logprob(Ai, Ai, np.ones(5), mean, chosen, n_draws=2**61)
+            # Independent draws, or the Sobol limit on n_draws raises in Python first.
+            sparsax.argmax_logprob(
+                Ai, Ai, np.ones(5), mean, chosen, n_draws=2**61, draws="iid"
+            )
         except Exception as e:
             print("raised:", e)
         """
@@ -332,7 +335,8 @@ def test_worker_thread_exception_raises_instead_of_aborting():
         timeout=300,
     )
     assert proc.returncode == 0, proc.stderr[-2000:]
-    assert "raised:" in proc.stdout
+    # The allocation's own message, so the failure came from a worker.
+    assert "raised:" in proc.stdout and "vector" in proc.stdout
 
 
 @pytest.mark.parametrize(
@@ -402,3 +406,52 @@ def test_klu_threads_sharing_a_factor_do_not_corrupt_each_other(solve):
 
     with ThreadPoolExecutor(THREADS) as pool:
         assert max(pool.map(work, range(THREADS))) < 1e-9
+
+
+@pytest.mark.parametrize("work", ["solve", "logdet", "selinv"])
+def test_a_long_native_call_lets_other_python_threads_run(work):
+    """The numpy core, which the PyTensor Ops call, must release the GIL."""
+    import threading
+    import time
+
+    import sparsax_cpp as cpp
+
+    side = 500
+    path = sp.diags([-np.ones(side - 1), -np.ones(side - 1)], [-1, 1])
+    eye = sp.identity(side)
+    A = sp.triu(
+        sp.kron(path, eye) + sp.kron(eye, path) + 5.0 * sp.identity(side**2)
+    ).tocoo()
+    Ai, Aj = A.row.astype(np.int32), A.col.astype(np.int32)
+    n = side**2
+    sparsax.clear_cache()
+
+    ticks = []
+    running = threading.Event()
+    stop = threading.Event()
+
+    def ticker():
+        running.set()
+        while not stop.is_set():
+            ticks.append(time.perf_counter())
+            time.sleep(0.001)
+
+    thread = threading.Thread(target=ticker)
+    thread.start()
+    running.wait()
+    try:
+        start = time.perf_counter()
+        if work == "solve":
+            cpp.solve_np(Ai, Aj, A.data, np.ones(n), 0)
+        elif work == "logdet":
+            cpp.logdet_np(Ai, Aj, A.data, n)
+        else:
+            cpp.selinv_np(Ai, Aj, A.data, n)
+        end = time.perf_counter()
+    finally:
+        stop.set()
+        thread.join()
+    during = [t for t in ticks if start <= t <= end]
+    # The analysis and the factorization alone take far longer than a tick.
+    assert end - start > 0.02
+    assert len(during) >= 5, f"{len(during)} ticks in {end - start:.3f} s"

@@ -44,7 +44,7 @@ than `scipy.sparse.linalg.splu`, while running entirely inside `jax.jit`.
   Composes with `grad` (`vmap(grad(solve))` batches too).
 - **Autodiff**: `solve` has a custom reverse-mode VJP in both `Ax` and `b`; `logdet` has one
   in `Ax` via the selected inverse. `lu_solve` is differentiable in `Ax` and `b` (transpose
-  solve), as is `umf_solve`; `lu_logdet` and `umf_logdet` are forward-only. Together
+  solve), as is `umf_solve`; `lu_logdet` and `umf_logdet` are not differentiable. Together
   `solve`/`logdet` give the gradient of a
   Gaussian log-density, so a precision matrix's values can be fit by HMC/NUTS, VI, or
   empirical-Bayes optimization.
@@ -129,7 +129,7 @@ def step(Ax, b):
 
 KLU shares the same caching story as CHOLMOD: the sparsity pattern's fill-reducing analysis is
 computed once and cached, and under `jax.vmap` the whole batch is solved in a single native FFI
-call. `lu_solve` is differentiable in `Ax` and `b` (transpose solve); `lu_logdet` is forward-only
+call. `lu_solve` is differentiable in `Ax` and `b` (transpose solve); `lu_logdet` is not differentiable
 (the non-symmetric logdet gradient is the full selected inverse, which KLU does not expose —
 use `logdet` for symmetric `A` when a gradient is needed).
 
@@ -248,7 +248,7 @@ Each `rhs` entry is `(b, modes)` where `modes` is one `MODE_*` or a sequence app
 right. `sparsax.factorization_count()` reports how many real factorizations have happened —
 handy for confirming the fusion. Benchmarked Gibbs draw (mean + sample + logdet) vmapped over a
 batch of *different* A's: **4× fewer factorizations and ~3.3–3.6× faster** than issuing the
-separate `solve`/`logdet` primitives. `factor_solve` is forward-only (no autodiff rule); use
+separate `solve`/`logdet` primitives. `factor_solve` has no autodiff rule; use
 `solve`/`logdet` when you need gradients.
 
 The KLU analogue is `lu_factor` + `lu_solve_factor` (+ `lu_logdet_factor`): factorize once,
@@ -285,7 +285,7 @@ one dense block with BLAS and costs 1.2–1.9× a factorization (M-series macOS,
 graph up to `n = 360,000`): 53 ms on a 2-D grid with `n = 90,000`, 132 ms on a 3-D grid with
 `n = 43,000`. A simplicial factor runs one column at a time. So does every factor on Windows,
 where sparsax has no direct BLAS link: it first converts a supernodal factor to simplicial, and
-those two grids take 556 ms and 7.8 s. `factor_solve` / `sample_gaussian` remain forward-only.
+those two grids take 556 ms and 7.8 s. `factor_solve` / `sample_gaussian` have no autodiff rule.
 
 `solve`, `lu_solve` and `umf_solve` differentiate by implicit differentiation
 (`jax.lax.custom_linear_solve`): every derivative of `A x = b` is another solve on the same
@@ -378,7 +378,8 @@ at `n = 90,000`, from 1.60 s to 0.26 s on a k-NN graph with `n = 100,000`, and f
 0.91 s on a 3-D grid with `n = 43,000`, whose large supernodes already use BLAS threads (M3
 Max). Such a batch counts as many concurrent callers for the advice on BLAS threads above.
 Threads asking for values already being factored wait for that factor rather than repeat the
-work, so chains started at one point factor once.
+work, so chains started at one point factor once. The scripts in `benchmarks/` produce the
+timings in this README.
 
 ## PyMC / PyTensor (NUTS)
 
@@ -401,13 +402,12 @@ reverse-mode rules (`solve` in `Ax`/`b`, `logdet` in `Ax`); the pattern `(Ai, Aj
 non-differentiable data. On PyTensor ≥ 3.1 the gradient routes through `Op.pullback`; older
 versions use `grad`.
 
-> **Prefer the C backend, not numba.** These Ops implement a pure-Python `perform` (it calls
-> the native core, which holds no GIL and does the real work — the CHOLMOD call dominates).
-> PyTensor's **C backend** (`FAST_RUN`, the default) calls that `perform` directly with no
-> penalty. PyTensor's **numba backend** cannot JIT a Python `perform`, so it falls back to
-> *object mode* and prints a `UserWarning` on every call — functionally correct but with
-> per-call overhead. Keep PyMC on its default sampler (C backend) to use these Ops, and switch
-> to the JAX frontend above if you deliberately run PyMC's JAX/numba linker.
+These Ops implement a Python `perform` that calls the native core, which releases the GIL while
+it works, so other Python threads keep running. From PyTensor 3 the default linker is Numba, even
+with `mode="FAST_RUN"`. It cannot compile a Python `perform`, so it runs these Ops in object mode
+and prints a `UserWarning` when it compiles the function, not on each call; the results are
+correct (checked on PyTensor 3.3.2). `mode="JAX"` does not work, because the Ops register no JAX
+conversion: to run on JAX, use the JAX frontend above.
 
 ## JAX sparse (`BCOO`)
 

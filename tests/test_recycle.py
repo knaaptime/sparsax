@@ -186,3 +186,41 @@ def test_default_cholmod_cache_gives_32_chains_one_factorization_each():
     )
     assert proc.returncode == 0, proc.stderr[-2000:]
     assert int(proc.stdout.strip()) == 32
+
+
+@pytest.mark.parametrize(
+    "solve, set_size",
+    [
+        (sparsax.solve, sparsax.set_num_cache_size),
+        (sparsax.lu_solve, sparsax.set_lu_cache_size),
+        (sparsax.umf_solve, sparsax.set_umf_cache_size),
+    ],
+    ids=["cholmod", "klu", "umfpack"],
+)
+def test_shrinking_a_cache_releases_what_no_longer_fits(solve, set_size):
+    """A cap is a bound on memory, so lowering it must take effect at once."""
+    A = 3.0 * np.eye(12) - np.eye(12, k=1) - np.eye(12, k=-1)
+    Ai, Aj = np.nonzero(A)
+    Ai, Aj = Ai.astype(np.int32), Aj.astype(np.int32)
+    Ax = A[Ai, Aj]
+    b = np.ones(12)
+    scales = [1.0, 2.0, 3.0, 4.0]
+    try:
+        set_size(4)
+        sparsax.clear_cache()
+        for s in scales:
+            jax.block_until_ready(solve(Ai, Aj, s * Ax, b))
+        before = sparsax.factorization_count()
+        for s in scales:
+            jax.block_until_ready(solve(Ai, Aj, s * Ax, b))
+        assert sparsax.factorization_count() == before  # all four were held
+
+        set_size(1)
+        for s in scales:
+            jax.block_until_ready(solve(Ai, Aj, s * Ax, b))
+        assert sparsax.factorization_count() >= before + 3  # at most one still was
+        x = solve(Ai, Aj, 2.0 * Ax, b)
+        np.testing.assert_allclose(x, np.linalg.solve(2.0 * A, b))
+    finally:
+        set_size(32)
+        sparsax.clear_cache()

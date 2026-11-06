@@ -865,7 +865,7 @@ def lu_factor(Ai, Aj, Ax, n):
     non-symmetric ``A``) needs the previous solve's output as the next solve's
     input, which a single fused call cannot represent.
 
-    Forward-only (no autodiff). Use :func:`lu_solve` when gradients are needed.
+    Not differentiable. Use :func:`lu_solve` when gradients are needed.
 
     Args:
         Ai, Aj: ``[n_nz]`` int32 — COO row/column indices (full matrix).
@@ -924,7 +924,7 @@ def lu_solve_factor(token, b, trans=False):
     Reuses the numeric factor held in ``token`` (from :func:`lu_factor``); costs
     ``O(nnz(L+U) * n_rhs)`` triangular solves, no factorization. The factor is
     not consumed — call :func:`lu_solve_factor` as many times as needed against
-    the same token. Forward-only (no autodiff). Use :func:`lu_solve` when
+    the same token. Not differentiable. Use :func:`lu_solve` when
     gradients are needed.
 
     Args:
@@ -968,7 +968,7 @@ def lu_logdet_factor(token):
     """Return ``log|det(A)|`` from a pre-computed KLU factor (no refactor).
 
     Reads the ``U`` diagonal from the factor held in ``token`` (from
-    :func:`lu_factor``); ``O(n)`` cost. Forward-only (no autodiff).
+    :func:`lu_factor``); ``O(n)`` cost. Not differentiable.
 
     Args:
         token: ``Factor`` from :func:`lu_factor`.
@@ -1201,7 +1201,7 @@ def umf_factor(Ai, Aj, Ax, n):
     logdet against the same factor. The per-pattern LRU cannot evict the factor
     while the token is live.
 
-    Forward-only (no autodiff). Use :func:`umf_solve` when gradients are needed.
+    Not differentiable. Use :func:`umf_solve` when gradients are needed.
 
     Args:
         Ai, Aj: ``[n_nz]`` int32 — COO row/column indices (full matrix).
@@ -1256,7 +1256,7 @@ def umf_solve_factor(token, b, trans=False):
 
     The UMFPACK counterpart of :func:`lu_solve_factor`. Reuses the numeric
     factor held in ``token`` (from :func:`umf_factor`): triangular solves only,
-    no factorization. The factor is not consumed. Forward-only (no autodiff).
+    no factorization. The factor is not consumed. Not differentiable.
 
     Args:
         token: token from :func:`umf_factor` (an opaque ``int64[2]`` array).
@@ -1298,8 +1298,7 @@ def umf_logdet_factor(token):
     """Return ``log|det(A)|`` from a pre-computed UMFPACK factor (no refactor).
 
     Reads the determinant off the factor held in ``token`` (from
-    :func:`umf_factor`) with ``umfpack_*_get_determinant``. Forward-only (no
-    autodiff).
+    :func:`umf_factor`) with ``umfpack_*_get_determinant``. Not differentiable.
 
     Args:
         token: token from :func:`umf_factor`.
@@ -1543,7 +1542,7 @@ def factor_solve(Ai, Aj, Ax, rhs, want_logdet=False, n=None):
         ``b``'s shape. If ``want_logdet`` is set, returns ``(xs, logdet)``.
 
     Note:
-        This primitive is forward-only (no autodiff rule). Use :func:`solve` /
+        This primitive has no autodiff rule. Use :func:`solve` /
         :func:`logdet`, which define VJPs, when you need gradients.
     """
     _require_x64()
@@ -1632,7 +1631,7 @@ def sample_gaussian(Ai, Aj, Ax, b, z, want_logdet=False):
 # ``jax.vmap`` it composes naturally: ``vmap(factor)`` factors each batch
 # element once, and ``vmap(solve_factor, in_axes=(None, 0))`` reuses one factor
 # across a batch of RHS — the key Krylov-recurrence shape (one factor, m+1
-# solves). The token is forward-only (no autodiff); use :func:`solve` /
+# solves). The token is not differentiable; use :func:`solve` /
 # :func:`logdet` when gradients are needed.
 
 
@@ -1663,7 +1662,7 @@ def factor(Ai, Aj, Ax, n):
     which a single fused call cannot represent. With a token, the basis build
     is a ``lax.fori_loop`` of :func:`solve_factor` calls against one ``factor``.
 
-    The token is forward-only (no autodiff). Use :func:`solve` / :func:`logdet`
+    The token is not differentiable. Use :func:`solve` / :func:`logdet`
     when gradients are needed.
 
     Args:
@@ -1739,7 +1738,7 @@ def solve_factor(token, b, mode=MODE_A):
     consumed — call :func:`solve_factor` as many times as needed against the
     same token.
 
-    Forward-only (no autodiff). Use :func:`solve` when gradients are needed.
+    Not differentiable. Use :func:`solve` when gradients are needed.
 
     Args:
         token: ``Factor`` from :func:`factor` (an opaque ``int64[2]`` array).
@@ -1781,7 +1780,7 @@ def logdet_factor(token):
     """Return ``log|A|`` from a pre-computed factor (no refactor).
 
     Reads the Cholesky diagonal from the factor held in ``token`` (from
-    :func:`factor`); ``O(n)`` cost. Forward-only (no autodiff).
+    :func:`factor`); ``O(n)`` cost. Not differentiable.
 
     Args:
         token: ``Factor`` from :func:`factor`.
@@ -2102,7 +2101,18 @@ def _bcoo_parts(A):
         raise ValueError(
             f"sparsax: expected BCOO indices of shape (nnz, 2), got {idx.shape}"
         )
-    return idx[:, 0], idx[:, 1], data
+    # BCOO pads with entries at the out-of-bounds index (n, n), under fromdense's
+    # nse or sum_duplicates, say.  They stand for nothing, so make them a zero at
+    # (0, 0), which a duplicate merges away.
+    shape = getattr(A, "shape", None)
+    if shape is None:
+        return idx[:, 0], idx[:, 1], data
+    keep = jnp.all(idx < jnp.asarray(shape, idx.dtype), axis=1)
+    return (
+        jnp.where(keep, idx[:, 0], 0),
+        jnp.where(keep, idx[:, 1], 0),
+        jnp.where(keep, data, 0.0),
+    )
 
 
 def solve_bcoo(A, b, mode=MODE_A):

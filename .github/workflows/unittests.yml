@@ -13,6 +13,11 @@ jobs:
   Test:
     name: ${{ matrix.os }}, ${{ matrix.environment-file }}
     runs-on: ${{ matrix.os }}
+    # For the issue a failed scheduled run opens.  Pull requests from forks stay
+    # read-only whatever this says.
+    permissions:
+      contents: read
+      issues: write
     strategy:
       fail-fast: false
       matrix:
@@ -45,8 +50,10 @@ jobs:
         run: pip install -e .  --no-build-isolation --no-deps
 
       - name: Test package
+        id: status
         run: |
           pytest --cov src/sparsax \
+           --report-log pytest-log.jsonl \
            -v \
            -r a \
            -n auto \
@@ -60,8 +67,8 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.xml
-          name: cholax-codecov
+          files: ./coverage.xml
+          name: sparsax-codecov
 
       - name: Generate and publish the report
         if: |
@@ -69,6 +76,49 @@ jobs:
           && steps.status.outcome == 'failure'
           && github.event_name == 'schedule'
           && github.repository_owner == 'knaaptime'
-        uses: xarray-contrib/issue-from-pytest-log@v1
+        uses: scientific-python/issue-from-pytest-log-action@f94477e45ef40e4403d7585ba639a9a3bcc53d43  # v1.3
         with:
           log-path: pytest-log.jsonl
+          issue-title: "Scheduled tests failed: ${{ matrix.os }}, ${{ matrix.environment-file }}"
+
+  Sanitizers:
+    name: ${{ matrix.sanitizer }} sanitizer, ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    # The macOS recipe has been run by hand; the Linux one has never run.  Make Linux
+    # required once it has been seen to pass.
+    continue-on-error: ${{ matrix.os == 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        sanitizer: [address, thread]
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # setuptools-scm needs tags
+
+      - name: setup micromamba
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: ci/313.yml
+          micromamba-version: 'latest'
+
+      - name: Choose the compiler
+        # Apple's clang is the one this recipe has been run with on macOS.
+        if: runner.os == 'macOS'
+        run: echo "SANITIZER_CXX=/usr/bin/clang++" >> "$GITHUB_ENV"
+
+      - name: Build with the sanitizer
+        run: |
+          export CXX="${SANITIZER_CXX:-$CXX}"
+          export CXXFLAGS="${CXXFLAGS:-} -fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer"
+          export LDFLAGS="${LDFLAGS:-} -fsanitize=${{ matrix.sanitizer }}"
+          pip install -e . --no-build-isolation --no-deps
+
+      - name: Test under the sanitizer
+        run: |
+          export CXX="${SANITIZER_CXX:-$CXX}"
+          bash ci/sanitize.sh ${{ matrix.sanitizer }}

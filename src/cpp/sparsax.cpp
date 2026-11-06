@@ -407,6 +407,20 @@ class InFlightClaim {
   uint64_t h_;
 };
 
+// Lower a value cache's cap at once: the cap is a bound on memory.  Tokens hold their
+// own references, so this never invalidates one.
+template <class Pattern>
+static void trim_numeric_caches(std::mutex& registry_mtx,
+                                PatternRegistry<Pattern>& registry, size_t cap) {
+  std::lock_guard<std::mutex> lk(registry_mtx);
+  for (auto& [h, chain] : registry)
+    for (auto& p : chain) {
+      std::lock_guard<std::mutex> ck(p->cache_mtx);
+      if (p->cache.size() > cap) p->cache.resize(cap);
+      if (p->next >= p->cache.size()) p->next = 0;
+    }
+}
+
 // Drop a registry's patterns.  A thread's last_pat can outlive this until that
 // thread's next call, so empty the numeric caches here rather than leave them
 // pinning factors.  Caller holds the registry's lock.
@@ -2823,13 +2837,16 @@ static nb::ndarray<nb::numpy, double> solve_np(ArrI32 Ai, ArrI32 Aj, ArrF64 Ax,
   double* out = new double[static_cast<size_t>(n) * nrhs];
   nb::capsule owner(out,
                     [](void* p) noexcept { delete[] static_cast<double*>(p); });
-  auto [pat, num] = chol_prepare_np(Ai.data(), Aj.data(), Ax.data(), nnz, n);
-  if (num->L) {
-    ffi::Error r = chol_solve_one(num->L, static_cast<int>(mode), b.data(), n,
-                                  nrhs, out);
-    if (r.failure()) throw std::runtime_error("sparsax: solve failed");
-  } else {
-    fill_nan(out, n * nrhs);
+  {
+    nb::gil_scoped_release release;
+    auto [pat, num] = chol_prepare_np(Ai.data(), Aj.data(), Ax.data(), nnz, n);
+    if (num->L) {
+      ffi::Error r = chol_solve_one(num->L, static_cast<int>(mode), b.data(), n,
+                                    nrhs, out);
+      if (r.failure()) throw std::runtime_error("sparsax: solve failed");
+    } else {
+      fill_nan(out, n * nrhs);
+    }
   }
   if (b.ndim() == 2)
     return nb::ndarray<nb::numpy, double>(
@@ -2907,6 +2924,7 @@ static nb::dict analysis_info(ArrI32 Ai, ArrI32 Aj, int64_t n) {
 static double logdet_np(ArrI32 Ai, ArrI32 Aj, ArrF64 Ax, int64_t n) {
   int64_t nnz = static_cast<int64_t>(Ai.shape(0));
   check_coo_np(Ai, Aj, Ax, nnz);
+  nb::gil_scoped_release release;
   auto [pat, num] = chol_prepare_np(Ai.data(), Aj.data(), Ax.data(), nnz, n);
   return num->logdet;
 }
@@ -2918,12 +2936,15 @@ static nb::ndarray<nb::numpy, double> selinv_np(ArrI32 Ai, ArrI32 Aj, ArrF64 Ax,
   double* out = new double[nnz > 0 ? static_cast<size_t>(nnz) : 1];
   nb::capsule owner(out,
                     [](void* p) noexcept { delete[] static_cast<double*>(p); });
-  auto [pat, num] = chol_prepare_np(Ai.data(), Aj.data(), Ax.data(), nnz, n);
-  if (num->L) {
-    ffi::Error r = chol_selinv(pat.get(), num.get(), nnz, out);
-    if (r.failure()) throw std::runtime_error("sparsax: selinv failed");
-  } else {
-    fill_nan(out, nnz);
+  {
+    nb::gil_scoped_release release;
+    auto [pat, num] = chol_prepare_np(Ai.data(), Aj.data(), Ax.data(), nnz, n);
+    if (num->L) {
+      ffi::Error r = chol_selinv(pat.get(), num.get(), nnz, out);
+      if (r.failure()) throw std::runtime_error("sparsax: selinv failed");
+    } else {
+      fill_nan(out, nnz);
+    }
   }
   return nb::ndarray<nb::numpy, double>(out, {static_cast<size_t>(nnz)}, owner);
 }
@@ -3024,10 +3045,6 @@ static std::atomic<int64_t> g_klu_num_factorizations{0};
 // the side table's copy keeps the factor alive until the token is discarded by
 // XLA. This differs from the CHOLMOD path (which copies the factor) because
 // KLU numeric factors are already refcounted shared objects.
-//
-// There is no lu_logdet_factor: KLU factors non-symmetric matrices, and det
-// is not needed for the spatial-sampler use case (the log-density's logdet
-// comes from the CHOLMOD path on the symmetric precision matrix).
 // ---------------------------------------------------------------------------
 
 // A KLU factor token: an opaque reference to a slot in g_klu_factor_slots.
@@ -3427,7 +3444,7 @@ static ffi::Error LuSolveF64Impl(ffi::Buffer<ffi::S32> Ai,
                        x->typed_data());
 }
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuSolveF64, LuSolveF64Impl,
+XLA_FFI_DEFINE_HANDLER_SYMBOL(SparsaxLuSolveF64, LuSolveF64Impl,
                               ffi::Ffi::Bind()
                                   .Arg<ffi::Buffer<ffi::S32>>()   // Ai
                                   .Arg<ffi::Buffer<ffi::S32>>()   // Aj
@@ -3493,7 +3510,7 @@ static ffi::Error LuSolveBatchedF64Impl(ffi::Buffer<ffi::S32> Ai,
   return ffi::Error::Success();
 }
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuSolveBatchedF64, LuSolveBatchedF64Impl,
+XLA_FFI_DEFINE_HANDLER_SYMBOL(SparsaxLuSolveBatchedF64, LuSolveBatchedF64Impl,
                               ffi::Ffi::Bind()
                                   .Arg<ffi::Buffer<ffi::S32>>()   // Ai
                                   .Arg<ffi::Buffer<ffi::S32>>()   // Aj
@@ -3516,10 +3533,6 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuSolveBatchedF64, LuSolveBatchedF64Impl,
 // Under vmap, lu_factor produces one token per batch element (one factorization
 // each); vmap(lu_solve_factor, in_axes=(None, 0)) reuses one token across a
 // batch of RHS — the key Krylov-recurrence shape (one factor, m+1 solves).
-//
-// No lu_logdet_factor: KLU factors non-symmetric matrices, and det is not
-// needed for the spatial-sampler use case (the log-density logdet comes from
-// the CHOLMOD path on the symmetric precision matrix).
 // ---------------------------------------------------------------------------
 
 // Write the token for a factor: a slot in the table, whose shared_ptr keeps the
@@ -3558,7 +3571,7 @@ static ffi::Error LuFactorF64Impl(ffi::Buffer<ffi::S32> Ai,
   return ffi::Error::Success();
 }
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuFactorF64, LuFactorF64Impl,
+XLA_FFI_DEFINE_HANDLER_SYMBOL(SparsaxLuFactorF64, LuFactorF64Impl,
                               ffi::Ffi::Bind()
                                   .Arg<ffi::Buffer<ffi::S32>>()   // Ai
                                   .Arg<ffi::Buffer<ffi::S32>>()   // Aj
@@ -3589,7 +3602,7 @@ static ffi::Error LuFactorBatchedF64Impl(ffi::Buffer<ffi::S32> Ai,
   return ffi::Error::Success();
 }
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuFactorBatchedF64, LuFactorBatchedF64Impl,
+XLA_FFI_DEFINE_HANDLER_SYMBOL(SparsaxLuFactorBatchedF64, LuFactorBatchedF64Impl,
                               ffi::Ffi::Bind()
                                   .Arg<ffi::Buffer<ffi::S32>>()   // Ai
                                   .Arg<ffi::Buffer<ffi::S32>>()   // Aj
@@ -3627,7 +3640,7 @@ static ffi::Error LuSolveFactorF64Impl(ffi::Buffer<ffi::S64> token,
                        b.typed_data(), n, nrhs, x->typed_data());
 }
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuSolveFactorF64, LuSolveFactorF64Impl,
+XLA_FFI_DEFINE_HANDLER_SYMBOL(SparsaxLuSolveFactorF64, LuSolveFactorF64Impl,
                               ffi::Ffi::Bind()
                                   .Arg<ffi::Buffer<ffi::S64>>()   // token [2]
                                   .Arg<ffi::Buffer<ffi::F64>>()   // b
@@ -3688,7 +3701,7 @@ static ffi::Error LuSolveFactorBatchedF64Impl(ffi::Buffer<ffi::S64> token,
   return ffi::Error::Success();
 }
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuSolveFactorBatchedF64,
+XLA_FFI_DEFINE_HANDLER_SYMBOL(SparsaxLuSolveFactorBatchedF64,
                               LuSolveFactorBatchedF64Impl,
                               ffi::Ffi::Bind()
                                   .Arg<ffi::Buffer<ffi::S64>>()   // token [2] or [B,2]
@@ -3736,7 +3749,7 @@ static ffi::Error LuLogdetF64Impl(ffi::Buffer<ffi::S32> Ai,
   return ffi::Error::Success();
 }
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuLogdetF64, LuLogdetF64Impl,
+XLA_FFI_DEFINE_HANDLER_SYMBOL(SparsaxLuLogdetF64, LuLogdetF64Impl,
                               ffi::Ffi::Bind()
                                   .Arg<ffi::Buffer<ffi::S32>>()   // Ai
                                   .Arg<ffi::Buffer<ffi::S32>>()   // Aj
@@ -3781,7 +3794,7 @@ static ffi::Error LuLogdetBatchedF64Impl(ffi::Buffer<ffi::S32> Ai,
   return ffi::Error::Success();
 }
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuLogdetBatchedF64,
+XLA_FFI_DEFINE_HANDLER_SYMBOL(SparsaxLuLogdetBatchedF64,
                               LuLogdetBatchedF64Impl,
                               ffi::Ffi::Bind()
                                   .Arg<ffi::Buffer<ffi::S32>>()   // Ai
@@ -3814,7 +3827,7 @@ static ffi::Error LuLogdetFactorF64Impl(ffi::Buffer<ffi::S64> token,
   return ffi::Error::Success();
 }
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuLogdetFactorF64, LuLogdetFactorF64Impl,
+XLA_FFI_DEFINE_HANDLER_SYMBOL(SparsaxLuLogdetFactorF64, LuLogdetFactorF64Impl,
                               ffi::Ffi::Bind()
                                   .Arg<ffi::Buffer<ffi::S64>>()   // token [2]
                                   .Ret<ffi::Buffer<ffi::F64>>()   // logdet
@@ -3852,7 +3865,7 @@ static ffi::Error LuLogdetFactorBatchedF64Impl(ffi::Buffer<ffi::S64> token,
   return ffi::Error::Success();
 }
 
-XLA_FFI_DEFINE_HANDLER_SYMBOL(CholgraphLuLogdetFactorBatchedF64,
+XLA_FFI_DEFINE_HANDLER_SYMBOL(SparsaxLuLogdetFactorBatchedF64,
                               LuLogdetFactorBatchedF64Impl,
                               ffi::Ffi::Bind()
                                   .Arg<ffi::Buffer<ffi::S64>>()   // token [B,2]
@@ -3993,10 +4006,7 @@ static std::shared_ptr<UmfHeldFactor> resolve_umf_factor_ref_locked(
   return std::make_shared<UmfHeldFactor>(it->second);
 }
 
-// Build the CSC structure and run umfpack_di_symbolic. The values are not
-// passed (NULL): the analysis must depend on the pattern alone for it to be
-// reusable as the values change, which is the whole point of the cache.
-// Caller holds g_umf_reg_mtx.
+// Build the CSC structure and run umfpack_di_symbolic.  Caller holds g_umf_reg_mtx.
 // Ax (the values of the call that first meets the pattern; may be null) goes to
 // umfpack_di_symbolic: its strategy test reads the diagonal, and without values
 // it assumes the unsymmetric strategy.  For I - rho W the symmetric strategy it
@@ -4512,7 +4522,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(SparsaxUmfSolveFactorBatchedF64,
 // umf_logdet: log|det(A)| for a general (non-symmetric) sparse matrix, read off
 // the factor by umfpack_di_get_determinant. Shares the per-pattern LRU with
 // umf_solve, so an umf_solve and an umf_logdet at identical values factorize
-// only once. Forward-only, for the same reason lu_logdet is: the non-symmetric
+// only once. Not differentiable, for the same reason lu_logdet is: the non-symmetric
 // logdet gradient is the full selected inverse, which neither LU backend
 // exposes -- use the CHOLMOD logdet when a gradient is needed.
 // ---------------------------------------------------------------------------
@@ -4692,7 +4702,7 @@ NB_MODULE(sparsax_cpp, m) {
     return nb::capsule(reinterpret_cast<void*>(CholmodFactorBatchedF64));
   });
   m.def("lu_factor_batched_f64_capsule", []() {
-    return nb::capsule(reinterpret_cast<void*>(CholgraphLuFactorBatchedF64));
+    return nb::capsule(reinterpret_cast<void*>(SparsaxLuFactorBatchedF64));
   });
   m.def("umf_factor_batched_f64_capsule", []() {
     return nb::capsule(reinterpret_cast<void*>(SparsaxUmfFactorBatchedF64));
@@ -4735,32 +4745,32 @@ NB_MODULE(sparsax_cpp, m) {
 
   // KLU sparse-LU handlers for non-symmetric matrices.
   m.def("lu_solve_f64_capsule", []() {
-    return nb::capsule(reinterpret_cast<void*>(CholgraphLuSolveF64));
+    return nb::capsule(reinterpret_cast<void*>(SparsaxLuSolveF64));
   });
   m.def("lu_solve_batched_f64_capsule", []() {
-    return nb::capsule(reinterpret_cast<void*>(CholgraphLuSolveBatchedF64));
+    return nb::capsule(reinterpret_cast<void*>(SparsaxLuSolveBatchedF64));
   });
   // KLU factor-token + logdet handlers.
   m.def("lu_factor_f64_capsule", []() {
-    return nb::capsule(reinterpret_cast<void*>(CholgraphLuFactorF64));
+    return nb::capsule(reinterpret_cast<void*>(SparsaxLuFactorF64));
   });
   m.def("lu_solve_factor_f64_capsule", []() {
-    return nb::capsule(reinterpret_cast<void*>(CholgraphLuSolveFactorF64));
+    return nb::capsule(reinterpret_cast<void*>(SparsaxLuSolveFactorF64));
   });
   m.def("lu_solve_factor_batched_f64_capsule", []() {
-    return nb::capsule(reinterpret_cast<void*>(CholgraphLuSolveFactorBatchedF64));
+    return nb::capsule(reinterpret_cast<void*>(SparsaxLuSolveFactorBatchedF64));
   });
   m.def("lu_logdet_f64_capsule", []() {
-    return nb::capsule(reinterpret_cast<void*>(CholgraphLuLogdetF64));
+    return nb::capsule(reinterpret_cast<void*>(SparsaxLuLogdetF64));
   });
   m.def("lu_logdet_batched_f64_capsule", []() {
-    return nb::capsule(reinterpret_cast<void*>(CholgraphLuLogdetBatchedF64));
+    return nb::capsule(reinterpret_cast<void*>(SparsaxLuLogdetBatchedF64));
   });
   m.def("lu_logdet_factor_f64_capsule", []() {
-    return nb::capsule(reinterpret_cast<void*>(CholgraphLuLogdetFactorF64));
+    return nb::capsule(reinterpret_cast<void*>(SparsaxLuLogdetFactorF64));
   });
   m.def("lu_logdet_factor_batched_f64_capsule", []() {
-    return nb::capsule(reinterpret_cast<void*>(CholgraphLuLogdetFactorBatchedF64));
+    return nb::capsule(reinterpret_cast<void*>(SparsaxLuLogdetFactorBatchedF64));
   });
 
   // UMFPACK multifrontal sparse-LU handlers -- the second LU backend, for the
@@ -4795,27 +4805,27 @@ NB_MODULE(sparsax_cpp, m) {
 
   // Numeric factors retained per KLU pattern in the shared cache (>= the
   // distinct ρ touched per sweep across chains for Krylov-basis reuse to land).
-  m.def("set_lu_cache_size", [](size_t n) { g_lu_cache_cap = n < 1 ? 1 : n; });
+  m.def("set_lu_cache_size", [](size_t n) {
+    const size_t cap = n < 1 ? 1 : n;
+    g_lu_cache_cap = cap;
+    trim_numeric_caches(g_klu_reg_mtx, g_klu_registry, cap);
+  });
 
   // Same, for the UMFPACK numeric-factor cache.
-  m.def("set_umf_cache_size", [](size_t n) { g_umf_cache_cap = n < 1 ? 1 : n; });
+  m.def("set_umf_cache_size", [](size_t n) {
+    const size_t cap = n < 1 ? 1 : n;
+    g_umf_cache_cap = cap;
+    trim_numeric_caches(g_umf_reg_mtx, g_umf_registry, cap);
+  });
 
   // Newest factor tokens kept per backend (factor / lu_factor / umf_factor).
   m.def("set_token_cache_size", [](size_t n) { g_token_cap = n < 1 ? 1 : n; });
 
-  // Numeric factors retained per CHOLMOD pattern (default 32). Shrinking trims
-  // every pattern's cache at once; tokens hold their own references, so a trim
-  // never invalidates one.
+  // Numeric factors retained per CHOLMOD pattern (default 32).
   m.def("set_num_cache_size", [](size_t n) {
-    size_t cap = n < 1 ? 1 : n;
+    const size_t cap = n < 1 ? 1 : n;
     g_chol_cache_cap = cap;
-    std::lock_guard<std::mutex> lk(g_chol_reg_mtx);
-    for (auto& [h, chain] : g_chol_registry)
-      for (auto& p : chain) {
-        std::lock_guard<std::mutex> ck(p->cache_mtx);
-        if (p->cache.size() > cap) p->cache.resize(cap);
-        if (p->next >= p->cache.size()) p->next = 0;
-      }
+    trim_numeric_caches(g_chol_reg_mtx, g_chol_registry, cap);
   });
 
   // Numpy-callable core, for non-JAX frontends (sparsax.pytensor).

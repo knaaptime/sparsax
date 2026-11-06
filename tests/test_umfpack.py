@@ -599,7 +599,8 @@ class TestCache:
             for _ in range(2):
                 xs = jax.vmap(lambda ax: sparsax.umf_solve(Ai, Aj, ax, b))(Axs)
                 jax.block_until_ready(xs)
-            assert sparsax.factorization_count() - c0 == 8
+            # Four values through one slot: at most one call in the second sweep can hit.
+            assert sparsax.factorization_count() - c0 >= 7
         finally:
             sparsax.set_umf_cache_size(32)
             sparsax.clear_cache()

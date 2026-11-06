@@ -62,7 +62,7 @@ class CholmodSolve(Op):
     """Solve ``A x = b`` (or a factor-part system) from cached CHOLMOD factor.
 
     Differentiable in ``Ax`` and ``b`` only for ``mode == MODE_A``; other modes
-    are forward-only (their VJP is undefined, matching the JAX ``solve``).
+    are not differentiable (their VJP is undefined, matching the JAX ``solve``).
     """
 
     __props__ = ("mode",)
@@ -131,7 +131,7 @@ _solve_a = CholmodSolve(MODE_A)
 
 
 class CholmodSelinv(Op):
-    """Selected inverse: ``A^-1`` at ``A``'s pattern. Forward-only."""
+    """Selected inverse: ``A^-1`` at ``A``'s pattern. Not differentiable."""
 
     __props__ = ("n",)
 

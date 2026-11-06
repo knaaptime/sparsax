@@ -44,7 +44,7 @@ against the held factor without re-hashing ``Ax`` or refactoring. This is the
 "hold the factor open" primitive that :func:`factor_solve` (which fuses a
 *fixed* set of solves into one call) cannot express: a recurrence
 ``V_{j+1} = A^{-1}(G V_j)`` (a shift-invert Krylov basis) needs the previous
-solve's output as the next solve's input. Forward-only (no autodiff); use
+solve's output as the next solve's input. Not differentiable; use
 :func:`solve` / :func:`logdet` when gradients are needed.
 
 .. autosummary::
@@ -79,7 +79,7 @@ The non-symmetric analogue of the CHOLMOD factor tokens: factor general ``A``
 once via KLU, then issue an unbounded sequence of solves (``A x = b`` or
 ``A^T x = b``) and a logdet against the held factor. The token holds a strong
 reference to the numeric factor, so the per-pattern LRU cannot evict it while
-the token is live. Forward-only (no autodiff).
+the token is live. Not differentiable.
 
 .. autosummary::
    :toctree: generated/
@@ -124,7 +124,7 @@ UMFPACK factor tokens
 
 The UMFPACK counterpart of the KLU factor tokens, with identical semantics:
 factor once, then issue an unbounded sequence of solves (``A x = b`` or
-``A^T x = b``) and a logdet against the held factor. Forward-only (no autodiff).
+``A^T x = b``) and a logdet against the held factor. Not differentiable.
 
 .. autosummary::
    :toctree: generated/
@@ -134,6 +134,7 @@ factor once, then issue an unbounded sequence of solves (``A x = b`` or
    umf_solve_factor
    umf_logdet_factor
    set_umf_cache_size
+   set_token_cache_size
 
 Solve modes
 ~~~~~~~~~~~

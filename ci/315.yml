@@ -1,0 +1,30 @@
+name: test
+channels:
+  - conda-forge
+dependencies:
+  - python=3.15
+  - setuptools_scm
+
+  - pip
+  - scipy
+  - numpy
+  - scikit-sparse
+  - nanobind
+  - suitesparse
+  - cmake
+  - scikit-build-core
+  - pytest
+  - cxx-compiler
+  - pytensor
+  - pip
+  - pip:
+    - jax >=0.10 # force jax from pip so windows has an installer
+  # testing
+  - jupyter
+  - pytest
+  - pytest-cov
+  - pytest-xdist
+  - pytest-reportlog
+  - codecov
+  - coverage
+  

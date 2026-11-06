@@ -766,3 +766,49 @@ class TestCache:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestPaddedBCOO:
+    """``BCOO.fromdense(A, nse=...)`` pads with entries at (n, n), out of bounds on purpose."""
+
+    def _padded(self):
+        from jax.experimental import sparse
+
+        A = np.array([[4.0, 1.0, 0.0], [1.0, 3.0, 0.5], [0.0, 0.5, 2.0]])
+        return A, sparse.BCOO.fromdense(jnp.asarray(A), nse=np.count_nonzero(A) + 3)
+
+    @pytest.mark.parametrize(
+        "solve",
+        [sparsax.solve_bcoo, sparsax.lu_solve_bcoo, sparsax.umf_solve_bcoo],
+        ids=["cholmod", "klu", "umfpack"],
+    )
+    def test_solve(self, solve):
+        A, M = self._padded()
+        b = np.array([1.0, 2.0, 3.0])
+        np.testing.assert_allclose(solve(M, b), np.linalg.solve(A, b))
+
+    @pytest.mark.parametrize(
+        "logdet",
+        [sparsax.logdet_bcoo, sparsax.lu_logdet_bcoo, sparsax.umf_logdet_bcoo],
+        ids=["cholmod", "klu", "umfpack"],
+    )
+    def test_logdet(self, logdet):
+        A, M = self._padded()
+        np.testing.assert_allclose(logdet(M), np.linalg.slogdet(A)[1])
+
+    def test_padding_cannot_reach_a_gradient(self):
+        A, M = self._padded()
+
+        def f(d):
+            return sparsax.logdet_bcoo(M.__class__((d, M.indices), shape=M.shape))
+
+        g = np.asarray(jax.grad(f)(M.data))
+        assert np.all(np.isfinite(g))
+        np.testing.assert_array_equal(g[-3:], np.zeros(3))
+
+    def test_under_jit(self):
+        A, M = self._padded()
+        b = np.array([1.0, 2.0, 3.0])
+        np.testing.assert_allclose(
+            jax.jit(sparsax.solve_bcoo)(M, b), np.linalg.solve(A, b)
+        )
