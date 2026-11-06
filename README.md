@@ -214,6 +214,13 @@ falling back to a full factorization if the reciprocal pivot growth collapses. U
 analysis uses the values of the first call on a pattern, which lets it choose the symmetric
 strategy for `I − ρW` (1.35–1.95× faster numeric factorizations than a pattern-only analysis).
 
+CHOLMOD's analysis tries AMD, and METIS when AMD's fill looks poor. `set_options(ordering="nesdis")`
+uses nested dissection instead (`"amd"`, `"metis"` and `"best"` also work). On 2-D grids and on
+k-NN and distance-band graphs with 30,000 to 400,000 nodes, that cut fill by 8–21%, the time of
+a factorization by 5–18% and of a selected inverse by 4–23%, for an analysis 5–11× slower, which
+is paid once per pattern. It changes no answers, and it stays opt-in because the gain is modest
+and small problems may never repay the analysis.
+
 ## Factor once, do everything: `factor_solve` / `sample_gaussian`
 
 `solve` and `logdet` are separate primitives, so a Gibbs sweep that needs a posterior mean, a
@@ -362,6 +369,16 @@ A single solve with many right-hand sides (128 columns or more) is itself split 
 workspaces. With 4,000 right-hand sides on an `n = 3,600` k-NN system, 16 threads take
 the solve from 0.24 s to 0.018 s (KLU), 0.63 s to 0.061 s (UMFPACK), and 0.21 s / 0.47 s
 to 0.026 s / 0.032 s (CHOLMOD simplicial / supernodal).
+
+A `vmap` over the values of `A` runs on several threads too, with one factor per element, as
+long as each thread gets enough work to repay starting it (from a batch of two at
+`n = 900`), and `SPARSAX_NUM_THREADS` caps this as well. A vmapped log-density and its gradient
+over 16 chains went from 118 ms to 17 ms on a 2-D grid with `n = 10,000`, from 1.45 s to 0.20 s
+at `n = 90,000`, from 1.60 s to 0.26 s on a k-NN graph with `n = 100,000`, and from 3.5 s to
+0.91 s on a 3-D grid with `n = 43,000`, whose large supernodes already use BLAS threads (M3
+Max). Such a batch counts as many concurrent callers for the advice on BLAS threads above.
+Threads asking for values already being factored wait for that factor rather than repeat the
+work, so chains started at one point factor once.
 
 ## PyMC / PyTensor (NUTS)
 

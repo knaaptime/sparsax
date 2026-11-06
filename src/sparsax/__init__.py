@@ -126,6 +126,14 @@ jax.ffi.register_ffi_target(
 jax.ffi.register_ffi_target(
     "sparsax_logdet_f64", _cpp.logdet_f64_capsule(), platform="cpu"
 )
+for _target, _capsule in (
+    ("sparsax_logdet_batched_f64", _cpp.logdet_batched_f64_capsule),
+    ("sparsax_selinv_batched_f64", _cpp.selinv_batched_f64_capsule),
+    ("sparsax_factor_batched_f64", _cpp.factor_batched_f64_capsule),
+    ("sparsax_lu_factor_batched_f64", _cpp.lu_factor_batched_f64_capsule),
+    ("sparsax_umf_factor_batched_f64", _cpp.umf_factor_batched_f64_capsule),
+):
+    jax.ffi.register_ffi_target(_target, _capsule(), platform="cpu")
 jax.ffi.register_ffi_target(
     "sparsax_selinv_f64", _cpp.selinv_f64_capsule(), platform="cpu"
 )
@@ -370,6 +378,81 @@ def _nestable(batched, flag):
 
     _NESTABLE[key] = call
     return call
+
+
+def _matrix_call(target, batched_target, n, element_shape, dtype):
+    """``f(Ai, Aj, Ax)`` for a native call that takes a matrix and no right-hand side.
+
+    ``element_shape(Ai)`` is the shape of one result.  Under ``vmap`` over ``Ax`` the
+    whole batch is one call to ``batched_target``, which runs its elements on several
+    threads, and an outer ``vmap`` merges into the same call.
+    """
+    key = (target, n)
+    if key in _NESTABLE:
+        return _NESTABLE[key]
+
+    @jax.custom_batching.custom_vmap
+    def batched(Ai, Aj, Ax):
+        shape = (Ax.shape[0],) + element_shape(Ai)
+        call = jax.ffi.ffi_call(batched_target, jax.ShapeDtypeStruct(shape, dtype))
+        return call(Ai, Aj, Ax, n=np.int64(n))
+
+    @batched.def_vmap
+    def _batched_vmap(axis_size, in_batched, Ai, Aj, Ax):
+        Ai_batched, Aj_batched, Ax_batched = in_batched
+        Ai, Aj = _share_pattern(Ai, Aj, Ai_batched, Aj_batched)
+        if not Ax_batched:
+            return batched(Ai, Aj, Ax), False
+        outer, inner = Ax.shape[0], Ax.shape[1]
+        out = batched(Ai, Aj, Ax.reshape((outer * inner,) + Ax.shape[2:]))
+        return out.reshape((outer, inner) + out.shape[1:]), True
+
+    @jax.custom_batching.custom_vmap
+    def single(Ai, Aj, Ax):
+        call = jax.ffi.ffi_call(target, jax.ShapeDtypeStruct(element_shape(Ai), dtype))
+        return call(Ai, Aj, Ax, n=np.int64(n))
+
+    @single.def_vmap
+    def _single_vmap(axis_size, in_batched, Ai, Aj, Ax):
+        Ai_batched, Aj_batched, Ax_batched = in_batched
+        Ai, Aj = _share_pattern(Ai, Aj, Ai_batched, Aj_batched)
+        if not Ax_batched:
+            return single(Ai, Aj, Ax), False
+        return batched(Ai, Aj, Ax), True
+
+    _NESTABLE[key] = single
+    return single
+
+
+def _token_logdet_call(target, batched_target):
+    """``f(token) -> logdet``, whose ``vmap`` over tokens is one batched call."""
+    if target in _NESTABLE:
+        return _NESTABLE[target]
+
+    @jax.custom_batching.custom_vmap
+    def batched(token):
+        call = jax.ffi.ffi_call(
+            batched_target, jax.ShapeDtypeStruct(token.shape[:1], jnp.float64)
+        )
+        return call(token)
+
+    @batched.def_vmap
+    def _batched_vmap(axis_size, in_batched, token):
+        outer, inner = token.shape[0], token.shape[1]
+        out = batched(token.reshape((outer * inner, 2)))
+        return out.reshape((outer, inner)), True
+
+    @jax.custom_batching.custom_vmap
+    def single(token):
+        call = jax.ffi.ffi_call(target, jax.ShapeDtypeStruct((), jnp.float64))
+        return call(token)
+
+    @single.def_vmap
+    def _single_vmap(axis_size, in_batched, token):
+        return batched(token), True
+
+    _NESTABLE[target] = single
+    return single
 
 
 def _token_solve_batched(target, attr):
@@ -701,12 +784,13 @@ def lu_solve_bcoo(A, b):
 
 
 def _lu_logdet_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    return _matrix_call(
         "sparsax_lu_logdet_f64",
-        jax.ShapeDtypeStruct((), jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_lu_logdet_batched_f64",
+        n,
+        lambda _: (),
+        jnp.float64,
+    )(Ai, Aj, Ax)
 
 
 def lu_logdet(Ai, Aj, Ax, n):
@@ -756,14 +840,14 @@ def lu_logdet_bcoo(A):
 
 
 def _lu_factor_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    # vmap(lu_factor) gives each batch element its own factor and token.
+    return _matrix_call(
         "sparsax_lu_factor_f64",
-        jax.ShapeDtypeStruct((2,), jnp.int64),
-        # The C++ handler factors one Ax per call; vmap(lu_factor) maps to one
-        # FFI call per batch element, each producing its own token.
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_lu_factor_batched_f64",
+        n,
+        lambda _: (2,),
+        jnp.int64,
+    )(Ai, Aj, Ax)
 
 
 def lu_factor(Ai, Aj, Ax, n):
@@ -875,12 +959,9 @@ def lu_solve_factor(token, b, trans=False):
 
 
 def _lu_logdet_factor_ffi(token):
-    call = jax.ffi.ffi_call(
-        "sparsax_lu_logdet_factor_f64",
-        jax.ShapeDtypeStruct((), jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(token)
+    return _token_logdet_call(
+        "sparsax_lu_logdet_factor_f64", "sparsax_lu_logdet_factor_batched_f64"
+    )(token)
 
 
 def lu_logdet_factor(token):
@@ -1041,12 +1122,13 @@ def umf_solve_bcoo(A, b):
 
 
 def _umf_logdet_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    return _matrix_call(
         "sparsax_umf_logdet_f64",
-        jax.ShapeDtypeStruct((), jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_umf_logdet_batched_f64",
+        n,
+        lambda _: (),
+        jnp.float64,
+    )(Ai, Aj, Ax)
 
 
 def umf_logdet(Ai, Aj, Ax, n):
@@ -1100,12 +1182,13 @@ def umf_logdet_bcoo(A):
 
 
 def _umf_factor_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    return _matrix_call(
         "sparsax_umf_factor_f64",
-        jax.ShapeDtypeStruct((2,), jnp.int64),
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_umf_factor_batched_f64",
+        n,
+        lambda _: (2,),
+        jnp.int64,
+    )(Ai, Aj, Ax)
 
 
 def umf_factor(Ai, Aj, Ax, n):
@@ -1206,12 +1289,9 @@ def umf_solve_factor(token, b, trans=False):
 
 
 def _umf_logdet_factor_ffi(token):
-    call = jax.ffi.ffi_call(
-        "sparsax_umf_logdet_factor_f64",
-        jax.ShapeDtypeStruct((), jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(token)
+    return _token_logdet_call(
+        "sparsax_umf_logdet_factor_f64", "sparsax_umf_logdet_factor_batched_f64"
+    )(token)
 
 
 def umf_logdet_factor(token):
@@ -1288,21 +1368,23 @@ def set_token_cache_size(n):
 
 
 def _logdet_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    return _matrix_call(
         "sparsax_logdet_f64",
-        jax.ShapeDtypeStruct((), jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_logdet_batched_f64",
+        n,
+        lambda _: (),
+        jnp.float64,
+    )(Ai, Aj, Ax)
 
 
 def _selinv_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    return _matrix_call(
         "sparsax_selinv_f64",
-        jax.ShapeDtypeStruct(Ax.shape, jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_selinv_batched_f64",
+        n,
+        lambda Ai_: Ai_.shape,
+        jnp.float64,
+    )(Ai, Aj, Ax)
 
 
 def selinv(Ai, Aj, Ax, n):
@@ -1555,16 +1637,15 @@ def sample_gaussian(Ai, Aj, Ax, b, z, want_logdet=False):
 
 
 def _factor_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    # vmap(factor) gives each batch element its own factor and token: one factor
+    # per chain, matching factor_solve's per-element factorization.
+    return _matrix_call(
         "sparsax_factor_f64",
-        jax.ShapeDtypeStruct((2,), jnp.int64),
-        # The C++ handler factors one Ax per call; vmap(factor) maps to one
-        # FFI call per batch element, each producing its own token. This is the
-        # intended batch semantics (one factor per chain), and matches
-        # factor_solve's per-element factorization.
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_factor_batched_f64",
+        n,
+        lambda _: (2,),
+        jnp.int64,
+    )(Ai, Aj, Ax)
 
 
 def factor(Ai, Aj, Ax, n):
@@ -1691,12 +1772,9 @@ def solve_factor(token, b, mode=MODE_A):
 
 
 def _logdet_factor_ffi(token):
-    call = jax.ffi.ffi_call(
-        "sparsax_logdet_factor_f64",
-        jax.ShapeDtypeStruct((), jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(token)
+    return _token_logdet_call(
+        "sparsax_logdet_factor_f64", "sparsax_logdet_factor_batched_f64"
+    )(token)
 
 
 def logdet_factor(token):
@@ -2061,7 +2139,7 @@ def update_solve_bcoo(A, C, b, downdate=False, mode=MODE_A, return_logdet=False)
     )
 
 
-def set_options(*, supernodal=None, on_failure=None):
+def set_options(*, supernodal=None, on_failure=None, ordering=None):
     """Configure sparsax for this process.  An option left out keeps its value.
 
     Args:
@@ -2080,6 +2158,13 @@ def set_options(*, supernodal=None, on_failure=None):
             tokens from a failed factorization are NaN too.  Other errors, such as
             bad arguments or a stale token, always raise.  It takes effect at
             once, in functions already compiled, and leaves the caches alone.
+        ordering: the fill-reducing ordering behind CHOLMOD's analysis.
+            ``"auto"`` (the initial value) lets CHOLMOD try AMD and turn to METIS
+            when AMD's fill looks poor.  ``"amd"``, ``"metis"`` and ``"nesdis"``
+            use that ordering, and ``"best"`` tries all three and keeps the
+            cheapest.  Only the speed changes, never the answers.  Clears the
+            factorization cache, like ``supernodal``.  KLU and UMFPACK keep their
+            own orderings.
     """
     if supernodal is not None:
         codes = {"simplicial": 0, "auto": 1, "supernodal": 2}
@@ -2087,6 +2172,13 @@ def set_options(*, supernodal=None, on_failure=None):
             raise ValueError(f"supernodal must be one of {sorted(codes)}")
     if on_failure not in (None, "raise", "nan"):
         raise ValueError('on_failure must be "raise" or "nan"')
+    # Negative codes are sparsax's own; the rest are CHOLMOD_AMD and so on.
+    orderings = {"auto": -1, "best": -2, "amd": 2, "metis": 3, "nesdis": 4}
+    if ordering is not None and ordering not in orderings:
+        raise ValueError(f"ordering must be one of {sorted(orderings)}")
+    if ordering is not None:
+        _cpp.set_ordering(orderings[ordering])
+        _cpp.clear_cache()
     if supernodal is not None:
         _cpp.set_supernodal(codes[supernodal])
         _cpp.clear_cache()

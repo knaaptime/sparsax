@@ -333,3 +333,72 @@ def test_worker_thread_exception_raises_instead_of_aborting():
     )
     assert proc.returncode == 0, proc.stderr[-2000:]
     assert "raised:" in proc.stdout
+
+
+@pytest.mark.parametrize(
+    "solve",
+    [sparsax.solve, sparsax.lu_solve, sparsax.umf_solve],
+    ids=["cholmod", "klu", "umfpack"],
+)
+def test_clear_cache_makes_every_thread_forget_its_last_pattern(solve):
+    """A thread remembers its last pattern; clear_cache must reach that memory too."""
+    A = 3.0 * np.eye(9) - np.eye(9, k=1) - np.eye(9, k=-1)
+    Ai, Aj = np.nonzero(A)
+    Ai, Aj = Ai.astype(np.int32), Aj.astype(np.int32)
+    Ax = A[Ai, Aj]
+    b = np.arange(1.0, 10.0)
+
+    def one():
+        return np.asarray(solve(Ai, Aj, Ax, b))
+
+    with ThreadPoolExecutor(2) as pool:
+        jax.block_until_ready(pool.submit(one).result())
+        jax.block_until_ready(pool.submit(one).result())
+        sparsax.clear_cache()
+        assert sparsax.cache_size() == 0
+        np.testing.assert_allclose(pool.submit(one).result(), np.linalg.solve(A, b))
+        assert sparsax.cache_size() == 1
+        np.testing.assert_allclose(pool.submit(one).result(), np.linalg.solve(A, b))
+        assert sparsax.cache_size() == 1
+    np.testing.assert_allclose(one(), np.linalg.solve(A, b))
+    assert sparsax.cache_size() == 1
+
+
+@pytest.mark.parametrize(
+    "solve",
+    [sparsax.lu_solve, sparsax.lu_solve_factor],
+    ids=["matrix", "token"],
+)
+def test_klu_threads_sharing_a_factor_do_not_corrupt_each_other(solve):
+    """Every thread solves its own right-hand sides against one factor, flat out.
+
+    A solve writes a workspace inside the KLU factor, so threads sharing one need a
+    workspace each.  If two ever shared, their answers would mix, and a large system
+    keeps them inside the solve long enough to overlap almost always.
+    """
+    side = 150
+    W = _rook_W(side).tocoo()
+    n = side * side
+    rows = np.concatenate([np.arange(n), W.row])
+    cols = np.concatenate([np.arange(n), W.col])
+    vals = np.concatenate([np.ones(n), -0.9 * W.data])
+    Ai, Aj = rows.astype(np.int32), cols.astype(np.int32)
+    A = sp.coo_matrix((vals, (rows, cols)), shape=(n, n)).tocsr()
+    if solve is sparsax.lu_solve:
+        run = jax.jit(lambda t, b: sparsax.lu_solve(Ai, Aj, vals, b))
+    else:
+        run = jax.jit(sparsax.lu_solve_factor)
+    token = sparsax.lu_factor(Ai, Aj, vals, n)
+    jax.block_until_ready(run(token, jnp.ones(n)))
+
+    def work(t):
+        rng = np.random.default_rng(100 + t)
+        worst = 0.0
+        for _ in range(25):
+            b = rng.normal(size=n)
+            x = np.asarray(run(token, jnp.asarray(b)))
+            worst = max(worst, np.max(np.abs(A @ x - b)))
+        return worst
+
+    with ThreadPoolExecutor(THREADS) as pool:
+        assert max(pool.map(work, range(THREADS))) < 1e-9
