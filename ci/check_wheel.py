@@ -51,6 +51,31 @@ np.testing.assert_allclose(
 # f(t) = |x|^2 / (1 + t)^2 with x = A^{-1} b, so f''(0) = 6 |x|^2.
 x = np.linalg.solve(A, np.asarray(b))
 np.testing.assert_allclose(float(jax.grad(jax.grad(f))(0.0)), 6.0 * x @ x, rtol=1e-10)
+
+# The selected inverse of a supernodal factor calls BLAS itself, not through
+# CHOLMOD, so a symbol that fails to resolve in this wheel shows up here.
+# A 400-node grid leaves several supernodes, which reaches every routine it calls.
+if sys.platform != "win32" and not sparsax._cpp.has_supernodal_selinv():
+    sys.exit("wheel was built without the supernodal selected inverse")
+side = 20
+ids = np.arange(side**2).reshape(side, side)
+right, down = (
+    (ids[:, :-1].ravel(), ids[:, 1:].ravel()),
+    (ids[:-1].ravel(), ids[1:].ravel()),
+)
+gi = np.concatenate([ids.ravel(), right[0], down[0]]).astype(np.int32)
+gj = np.concatenate([ids.ravel(), right[1], down[1]]).astype(np.int32)
+gx = np.concatenate([np.full(side**2, 5.0), np.full(len(gi) - side**2, -1.0)])
+G = np.zeros((side**2, side**2))
+G[gi, gj] = gx
+G = G + G.T - np.diag(np.diag(G))
+sparsax.set_options(supernodal="supernodal")
+np.testing.assert_allclose(
+    np.asarray(sparsax.selinv(gi, gj, gx, side**2)),
+    np.linalg.inv(G)[gi, gj],
+    rtol=1e-9,
+)
+sparsax.set_options(supernodal="auto")
 print(
     f"sparsax {sparsax.__version__}: bundled {sorted(bundled) or 'nothing'}; checks passed"
 )

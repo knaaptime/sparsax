@@ -52,6 +52,8 @@ fixed. The UMFPACK path mirrors the KLU one function for function
 :func:`umf_solve_factor` / :func:`umf_logdet_factor`).
 """
 
+import functools
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -76,6 +78,7 @@ __all__ = [
     "logdet_factor",
     "sample_gaussian",
     "update_solve",
+    "argmax_logprob",
     "lu_solve",
     "lu_solve_bcoo",
     "lu_logdet",
@@ -123,12 +126,25 @@ jax.ffi.register_ffi_target(
 jax.ffi.register_ffi_target(
     "sparsax_logdet_f64", _cpp.logdet_f64_capsule(), platform="cpu"
 )
+for _target, _capsule in (
+    ("sparsax_logdet_batched_f64", _cpp.logdet_batched_f64_capsule),
+    ("sparsax_selinv_batched_f64", _cpp.selinv_batched_f64_capsule),
+    ("sparsax_factor_batched_f64", _cpp.factor_batched_f64_capsule),
+    ("sparsax_lu_factor_batched_f64", _cpp.lu_factor_batched_f64_capsule),
+    ("sparsax_umf_factor_batched_f64", _cpp.umf_factor_batched_f64_capsule),
+):
+    jax.ffi.register_ffi_target(_target, _capsule(), platform="cpu")
 jax.ffi.register_ffi_target(
     "sparsax_selinv_f64", _cpp.selinv_f64_capsule(), platform="cpu"
 )
 jax.ffi.register_ffi_target(
     "sparsax_updown_solve_f64",
     _cpp.updown_solve_f64_capsule(),
+    platform="cpu",
+)
+jax.ffi.register_ffi_target(
+    "sparsax_argmax_logprob_f64",
+    _cpp.argmax_logprob_f64_capsule(),
     platform="cpu",
 )
 jax.ffi.register_ffi_target(
@@ -270,6 +286,22 @@ def _solve_batched(Ai, Aj, Ax, b, mode):
     return call(Ai, Aj, Ax, b, mode=np.int64(mode))
 
 
+def _solve_as_columns(solve, b, n_axis=1):
+    """A batch of right-hand sides against one factor, as extra columns of one solve.
+
+    ``b`` has the batch on axis 0 and ``n`` on ``n_axis``: ``(B, ..., n[, k])``
+    goes to ``solve`` as ``(..., n, B * k)``.  Every element shares a factor, so a
+    single call hashes ``Ax`` once and reaches the threaded multi-column kernels,
+    where a batched call hashes it per element and solves one column at a time.
+    """
+    if b.size == 0:
+        return jnp.zeros_like(b)
+    columns = b.shape[0] * int(np.prod(b.shape[n_axis + 1 :], dtype=np.int64))
+    block = jnp.moveaxis(b, 0, -1).reshape(b.shape[1 : n_axis + 1] + (columns,))
+    x = solve(block)
+    return jnp.moveaxis(x.reshape(b.shape[1:] + (b.shape[0],)), -1, 0)
+
+
 def _share_pattern(Ai, Aj, Ai_batched, Aj_batched):
     """Collapse a batched-but-uniform COO pattern back to a single pattern.
 
@@ -327,8 +359,12 @@ def _nestable(batched, flag):
     def _call_vmap(axis_size, in_batched, Ai, Aj, Ax, b):
         Ai_batched, Aj_batched, Ax_batched, b_batched = in_batched
         Ai, Aj = _share_pattern(Ai, Aj, Ai_batched, Aj_batched)
+        if not Ax_batched and not b_batched:
+            return call(Ai, Aj, Ax, b), False
         if not Ax_batched:
-            Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
+            # Each inner element's factor serves the whole outer batch of b.
+            x = _solve_as_columns(lambda r: call(Ai, Aj, Ax, r), b, n_axis=2)
+            return x, True
         if not b_batched:
             b = jnp.broadcast_to(b, (axis_size,) + b.shape)
         outer, inner = Ax.shape[0], Ax.shape[1]
@@ -344,10 +380,142 @@ def _nestable(batched, flag):
     return call
 
 
+def _matrix_call(target, batched_target, n, element_shape, dtype):
+    """``f(Ai, Aj, Ax)`` for a native call that takes a matrix and no right-hand side.
+
+    ``element_shape(Ai)`` is the shape of one result.  Under ``vmap`` over ``Ax`` the
+    whole batch is one call to ``batched_target``, which runs its elements on several
+    threads, and an outer ``vmap`` merges into the same call.
+    """
+    key = (target, n)
+    if key in _NESTABLE:
+        return _NESTABLE[key]
+
+    @jax.custom_batching.custom_vmap
+    def batched(Ai, Aj, Ax):
+        shape = (Ax.shape[0],) + element_shape(Ai)
+        call = jax.ffi.ffi_call(batched_target, jax.ShapeDtypeStruct(shape, dtype))
+        return call(Ai, Aj, Ax, n=np.int64(n))
+
+    @batched.def_vmap
+    def _batched_vmap(axis_size, in_batched, Ai, Aj, Ax):
+        Ai_batched, Aj_batched, Ax_batched = in_batched
+        Ai, Aj = _share_pattern(Ai, Aj, Ai_batched, Aj_batched)
+        if not Ax_batched:
+            return batched(Ai, Aj, Ax), False
+        outer, inner = Ax.shape[0], Ax.shape[1]
+        out = batched(Ai, Aj, Ax.reshape((outer * inner,) + Ax.shape[2:]))
+        return out.reshape((outer, inner) + out.shape[1:]), True
+
+    @jax.custom_batching.custom_vmap
+    def single(Ai, Aj, Ax):
+        call = jax.ffi.ffi_call(target, jax.ShapeDtypeStruct(element_shape(Ai), dtype))
+        return call(Ai, Aj, Ax, n=np.int64(n))
+
+    @single.def_vmap
+    def _single_vmap(axis_size, in_batched, Ai, Aj, Ax):
+        Ai_batched, Aj_batched, Ax_batched = in_batched
+        Ai, Aj = _share_pattern(Ai, Aj, Ai_batched, Aj_batched)
+        if not Ax_batched:
+            return single(Ai, Aj, Ax), False
+        return batched(Ai, Aj, Ax), True
+
+    _NESTABLE[key] = single
+    return single
+
+
+def _token_logdet_call(target, batched_target):
+    """``f(token) -> logdet``, whose ``vmap`` over tokens is one batched call."""
+    if target in _NESTABLE:
+        return _NESTABLE[target]
+
+    @jax.custom_batching.custom_vmap
+    def batched(token):
+        call = jax.ffi.ffi_call(
+            batched_target, jax.ShapeDtypeStruct(token.shape[:1], jnp.float64)
+        )
+        return call(token)
+
+    @batched.def_vmap
+    def _batched_vmap(axis_size, in_batched, token):
+        outer, inner = token.shape[0], token.shape[1]
+        out = batched(token.reshape((outer * inner, 2)))
+        return out.reshape((outer, inner)), True
+
+    @jax.custom_batching.custom_vmap
+    def single(token):
+        call = jax.ffi.ffi_call(target, jax.ShapeDtypeStruct((), jnp.float64))
+        return call(token)
+
+    @single.def_vmap
+    def _single_vmap(axis_size, in_batched, token):
+        return batched(token), True
+
+    _NESTABLE[target] = single
+    return single
+
+
+def _token_solve_batched(target, attr):
+    """The batched token handler ``target`` as ``f(token, b, flag)``."""
+
+    def f(token, b, flag):
+        call = jax.ffi.ffi_call(target, jax.ShapeDtypeStruct(b.shape, b.dtype))
+        return call(token, b, **{attr: np.int64(flag)})
+
+    return f
+
+
+def _nestable_token_solve(target, attr, flag):
+    """A batched token solve (``(B, 2)``, ``(B, n[, k])``) that supports nested ``vmap``.
+
+    The token counterpart of :func:`_nestable`: an outer batch of tokens merges
+    into the existing batch axis, and an outer batch of ``b`` alone becomes extra
+    columns for each token's factor.
+    """
+    key = (target, attr, flag)
+    if key in _NESTABLE:
+        return _NESTABLE[key]
+
+    batched = _token_solve_batched(target, attr)
+
+    @jax.custom_batching.custom_vmap
+    def call(token, b):
+        return batched(token, b, flag)
+
+    @call.def_vmap
+    def _call_vmap(axis_size, in_batched, token, b):
+        token_batched, b_batched = in_batched
+        if not token_batched:
+            return _solve_as_columns(lambda r: call(token, r), b, n_axis=2), True
+        if not b_batched:
+            b = jnp.broadcast_to(b, (axis_size,) + b.shape)
+        outer, inner = token.shape[0], token.shape[1]
+        x = call(
+            token.reshape((outer * inner, 2)),
+            b.reshape((outer * inner,) + b.shape[2:]),
+        )
+        return x.reshape((outer, inner) + x.shape[1:]), True
+
+    _NESTABLE[key] = call
+    return call
+
+
+def _token_solve_vmap(dispatch, target, attr, flag, axis_size, in_batched, token, b):
+    """The ``vmap`` rule shared by the three backends' token solves."""
+    token_batched, b_batched = in_batched
+    if not token_batched:
+        return _solve_as_columns(lambda r: dispatch(token, r), b), True
+    if not b_batched:
+        b = jnp.broadcast_to(b, (axis_size,) + b.shape)
+    return _nestable_token_solve(target, attr, flag)(token, b), True
+
+
 # One custom_vmap-wrapped dispatcher per solve mode: an ordinary (unbatched)
-# FFI call normally, but under vmap it routes to the batched handler so the
-# batch loop runs in C++ instead of as XLA per-iteration dispatch. Ai/Aj are
-# shared across the batch (see _share_pattern), so they are not broadcast.
+# FFI call normally.  Under vmap over the values it routes to the batched handler,
+# so the batch loop runs in C++ instead of as XLA per-iteration dispatch; under
+# vmap over b alone it stays one call, with the batch as extra columns
+# (_solve_as_columns). Ai/Aj are shared across the batch (see _share_pattern), so
+# they are not broadcast.
 _DISPATCH = {}
 
 
@@ -363,8 +531,10 @@ def _make_solve_dispatch(mode):
     def _dispatch_vmap(axis_size, in_batched, Ai, Aj, Ax, b):
         Ai_batched, Aj_batched, Ax_batched, b_batched = in_batched
         Ai, Aj = _share_pattern(Ai, Aj, Ai_batched, Aj_batched)
+        if not Ax_batched and not b_batched:
+            return dispatch(Ai, Aj, Ax, b), False
         if not Ax_batched:
-            Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
+            return _solve_as_columns(lambda r: dispatch(Ai, Aj, Ax, r), b), True
         if not b_batched:
             b = jnp.broadcast_to(b, (axis_size,) + b.shape)
         return _nestable(_solve_batched, mode)(Ai, Aj, Ax, b), True
@@ -453,6 +623,7 @@ def solve(Ai, Aj, Ax, b, mode=MODE_A):
     Raises:
         Exception: if the matrix is not positive definite (raised by the XLA
             runtime with the CHOLMOD failure column in the message).
+            ``set_options(on_failure="nan")`` returns NaN instead.
     """
     _require_x64()
     Ai = jnp.asarray(Ai, jnp.int32)
@@ -522,8 +693,10 @@ def _make_lu_dispatch(trans):
     def _dispatch_vmap(axis_size, in_batched, Ai, Aj, Ax, b):
         Ai_batched, Aj_batched, Ax_batched, b_batched = in_batched
         Ai, Aj = _share_pattern(Ai, Aj, Ai_batched, Aj_batched)
+        if not Ax_batched and not b_batched:
+            return dispatch(Ai, Aj, Ax, b), False
         if not Ax_batched:
-            Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
+            return _solve_as_columns(lambda r: dispatch(Ai, Aj, Ax, r), b), True
         if not b_batched:
             b = jnp.broadcast_to(b, (axis_size,) + b.shape)
         return _nestable(_lu_solve_batched, trans)(Ai, Aj, Ax, b), True
@@ -558,8 +731,9 @@ def lu_solve(Ai, Aj, Ax, b):
         ``x`` with the same shape as ``b``.
 
     Raises:
-        Exception: if ``A`` is singular (raised by the XLA runtime with the KLU
-            failure status in the message).
+        Exception: if ``A`` is singular or holds a non-finite value (raised by
+            the XLA runtime with the KLU failure status in the message).
+            ``set_options(on_failure="nan")`` returns NaN instead.
     """
     _require_x64()
     Ai = jnp.asarray(Ai, jnp.int32)
@@ -610,12 +784,13 @@ def lu_solve_bcoo(A, b):
 
 
 def _lu_logdet_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    return _matrix_call(
         "sparsax_lu_logdet_f64",
-        jax.ShapeDtypeStruct((), jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_lu_logdet_batched_f64",
+        n,
+        lambda _: (),
+        jnp.float64,
+    )(Ai, Aj, Ax)
 
 
 def lu_logdet(Ai, Aj, Ax, n):
@@ -643,7 +818,8 @@ def lu_logdet(Ai, Aj, Ax, n):
         Scalar float64 ``log(abs(det(A)))``.
 
     Raises:
-        Exception: if ``A`` is singular (a zero or NaN ``U`` diagonal entry).
+        Exception: if ``A`` is singular or holds a non-finite value.
+            ``set_options(on_failure="nan")`` returns NaN instead.
     """
     _require_x64()
     Ai = jnp.asarray(Ai, jnp.int32)
@@ -664,14 +840,14 @@ def lu_logdet_bcoo(A):
 
 
 def _lu_factor_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    # vmap(lu_factor) gives each batch element its own factor and token.
+    return _matrix_call(
         "sparsax_lu_factor_f64",
-        jax.ShapeDtypeStruct((2,), jnp.int64),
-        # The C++ handler factors one Ax per call; vmap(lu_factor) maps to one
-        # FFI call per batch element, each producing its own token.
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_lu_factor_batched_f64",
+        n,
+        lambda _: (2,),
+        jnp.int64,
+    )(Ai, Aj, Ax)
 
 
 def lu_factor(Ai, Aj, Ax, n):
@@ -689,7 +865,7 @@ def lu_factor(Ai, Aj, Ax, n):
     non-symmetric ``A``) needs the previous solve's output as the next solve's
     input, which a single fused call cannot represent.
 
-    Forward-only (no autodiff). Use :func:`lu_solve` when gradients are needed.
+    Not differentiable. Use :func:`lu_solve` when gradients are needed.
 
     Args:
         Ai, Aj: ``[n_nz]`` int32 — COO row/column indices (full matrix).
@@ -728,18 +904,16 @@ def _make_lu_solve_factor_dispatch(trans):
 
     @dispatch.def_vmap
     def _dispatch_vmap(axis_size, in_batched, token, b):
-        token_batched, b_batched = in_batched
-        if b.ndim not in (2, 3):
-            raise ValueError(f"vmapped b must be 2D or 3D, got shape {b.shape}")
-        if not token_batched:
-            token = jnp.broadcast_to(token, (axis_size,) + token.shape)
-        if not b_batched:
-            b = jnp.broadcast_to(b, (axis_size,) + b.shape)
-        call = jax.ffi.ffi_call(
+        return _token_solve_vmap(
+            dispatch,
             "sparsax_lu_solve_factor_batched_f64",
-            jax.ShapeDtypeStruct(b.shape, b.dtype),
+            "trans",
+            trans,
+            axis_size,
+            in_batched,
+            token,
+            b,
         )
-        return call(token, b, trans=np.int64(trans)), True
 
     return dispatch
 
@@ -750,7 +924,7 @@ def lu_solve_factor(token, b, trans=False):
     Reuses the numeric factor held in ``token`` (from :func:`lu_factor``); costs
     ``O(nnz(L+U) * n_rhs)`` triangular solves, no factorization. The factor is
     not consumed — call :func:`lu_solve_factor` as many times as needed against
-    the same token. Forward-only (no autodiff). Use :func:`lu_solve` when
+    the same token. Not differentiable. Use :func:`lu_solve` when
     gradients are needed.
 
     Args:
@@ -765,9 +939,10 @@ def lu_solve_factor(token, b, trans=False):
     Note:
         Under ``jax.vmap``, ``vmap(lu_solve_factor, in_axes=(None, 0))`` reuses
         one factor across a batch of RHS — the key Krylov-recurrence shape (one
-        factor, ``m+1`` solves). ``vmap(lu_factor)`` followed by
-        ``vmap(lu_solve_factor)`` (both batched) produces one factor per batch
-        element.
+        factor, ``m+1`` solves), run as one multi-column solve.
+        ``vmap(lu_factor)`` followed by ``vmap(lu_solve_factor)`` (both batched)
+        produces one factor per batch element. The two nest in either order, as
+        one native call.
     """
     _require_x64()
     token = jnp.asarray(token, jnp.int64)
@@ -784,19 +959,16 @@ def lu_solve_factor(token, b, trans=False):
 
 
 def _lu_logdet_factor_ffi(token):
-    call = jax.ffi.ffi_call(
-        "sparsax_lu_logdet_factor_f64",
-        jax.ShapeDtypeStruct((), jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(token)
+    return _token_logdet_call(
+        "sparsax_lu_logdet_factor_f64", "sparsax_lu_logdet_factor_batched_f64"
+    )(token)
 
 
 def lu_logdet_factor(token):
     """Return ``log|det(A)|`` from a pre-computed KLU factor (no refactor).
 
     Reads the ``U`` diagonal from the factor held in ``token`` (from
-    :func:`lu_factor``); ``O(n)`` cost. Forward-only (no autodiff).
+    :func:`lu_factor``); ``O(n)`` cost. Not differentiable.
 
     Args:
         token: ``Factor`` from :func:`lu_factor`.
@@ -870,8 +1042,10 @@ def _make_umf_dispatch(trans):
     def _dispatch_vmap(axis_size, in_batched, Ai, Aj, Ax, b):
         Ai_batched, Aj_batched, Ax_batched, b_batched = in_batched
         Ai, Aj = _share_pattern(Ai, Aj, Ai_batched, Aj_batched)
+        if not Ax_batched and not b_batched:
+            return dispatch(Ai, Aj, Ax, b), False
         if not Ax_batched:
-            Ax = jnp.broadcast_to(Ax, (axis_size,) + Ax.shape)
+            return _solve_as_columns(lambda r: dispatch(Ai, Aj, Ax, r), b), True
         if not b_batched:
             b = jnp.broadcast_to(b, (axis_size,) + b.shape)
         return _nestable(_umf_solve_batched, trans)(Ai, Aj, Ax, b), True
@@ -908,8 +1082,9 @@ def umf_solve(Ai, Aj, Ax, b):
         ``x`` with the same shape as ``b``.
 
     Raises:
-        Exception: if ``A`` is singular (raised by the XLA runtime with the
-            UMFPACK status in the message).
+        Exception: if ``A`` is singular or holds a non-finite value (raised by
+            the XLA runtime with the UMFPACK status in the message).
+            ``set_options(on_failure="nan")`` returns NaN instead.
 
     Note:
         Iterative refinement is off (UMFPACK's default is two steps), so a
@@ -947,12 +1122,13 @@ def umf_solve_bcoo(A, b):
 
 
 def _umf_logdet_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    return _matrix_call(
         "sparsax_umf_logdet_f64",
-        jax.ShapeDtypeStruct((), jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_umf_logdet_batched_f64",
+        n,
+        lambda _: (),
+        jnp.float64,
+    )(Ai, Aj, Ax)
 
 
 def umf_logdet(Ai, Aj, Ax, n):
@@ -984,7 +1160,8 @@ def umf_logdet(Ai, Aj, Ax, n):
         Scalar float64 ``log(abs(det(A)))``.
 
     Raises:
-        Exception: if ``A`` is singular.
+        Exception: if ``A`` is singular or holds a non-finite value.
+            ``set_options(on_failure="nan")`` returns NaN instead.
     """
     _require_x64()
     Ai = jnp.asarray(Ai, jnp.int32)
@@ -1005,12 +1182,13 @@ def umf_logdet_bcoo(A):
 
 
 def _umf_factor_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    return _matrix_call(
         "sparsax_umf_factor_f64",
-        jax.ShapeDtypeStruct((2,), jnp.int64),
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_umf_factor_batched_f64",
+        n,
+        lambda _: (2,),
+        jnp.int64,
+    )(Ai, Aj, Ax)
 
 
 def umf_factor(Ai, Aj, Ax, n):
@@ -1023,7 +1201,7 @@ def umf_factor(Ai, Aj, Ax, n):
     logdet against the same factor. The per-pattern LRU cannot evict the factor
     while the token is live.
 
-    Forward-only (no autodiff). Use :func:`umf_solve` when gradients are needed.
+    Not differentiable. Use :func:`umf_solve` when gradients are needed.
 
     Args:
         Ai, Aj: ``[n_nz]`` int32 — COO row/column indices (full matrix).
@@ -1059,18 +1237,16 @@ def _make_umf_solve_factor_dispatch(trans):
 
     @dispatch.def_vmap
     def _dispatch_vmap(axis_size, in_batched, token, b):
-        token_batched, b_batched = in_batched
-        if b.ndim not in (2, 3):
-            raise ValueError(f"vmapped b must be 2D or 3D, got shape {b.shape}")
-        if not token_batched:
-            token = jnp.broadcast_to(token, (axis_size,) + token.shape)
-        if not b_batched:
-            b = jnp.broadcast_to(b, (axis_size,) + b.shape)
-        call = jax.ffi.ffi_call(
+        return _token_solve_vmap(
+            dispatch,
             "sparsax_umf_solve_factor_batched_f64",
-            jax.ShapeDtypeStruct(b.shape, b.dtype),
+            "trans",
+            trans,
+            axis_size,
+            in_batched,
+            token,
+            b,
         )
-        return call(token, b, trans=np.int64(trans)), True
 
     return dispatch
 
@@ -1080,7 +1256,7 @@ def umf_solve_factor(token, b, trans=False):
 
     The UMFPACK counterpart of :func:`lu_solve_factor`. Reuses the numeric
     factor held in ``token`` (from :func:`umf_factor`): triangular solves only,
-    no factorization. The factor is not consumed. Forward-only (no autodiff).
+    no factorization. The factor is not consumed. Not differentiable.
 
     Args:
         token: token from :func:`umf_factor` (an opaque ``int64[2]`` array).
@@ -1094,8 +1270,9 @@ def umf_solve_factor(token, b, trans=False):
     Note:
         ``vmap(umf_solve_factor, in_axes=(None, 0))`` reuses one factor across a
         batch of right-hand sides — the Krylov-recurrence shape (one factor,
-        ``m+1`` solves). ``vmap(umf_factor)`` then ``vmap(umf_solve_factor)``
-        (both batched) gives one factor per batch element.
+        ``m+1`` solves), run as one multi-column solve. ``vmap(umf_factor)`` then
+        ``vmap(umf_solve_factor)`` (both batched) gives one factor per batch
+        element. The two nest in either order, as one native call.
     """
     _require_x64()
     token = jnp.asarray(token, jnp.int64)
@@ -1112,20 +1289,16 @@ def umf_solve_factor(token, b, trans=False):
 
 
 def _umf_logdet_factor_ffi(token):
-    call = jax.ffi.ffi_call(
-        "sparsax_umf_logdet_factor_f64",
-        jax.ShapeDtypeStruct((), jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(token)
+    return _token_logdet_call(
+        "sparsax_umf_logdet_factor_f64", "sparsax_umf_logdet_factor_batched_f64"
+    )(token)
 
 
 def umf_logdet_factor(token):
     """Return ``log|det(A)|`` from a pre-computed UMFPACK factor (no refactor).
 
     Reads the determinant off the factor held in ``token`` (from
-    :func:`umf_factor`) with ``umfpack_*_get_determinant``. Forward-only (no
-    autodiff).
+    :func:`umf_factor`) with ``umfpack_*_get_determinant``. Not differentiable.
 
     Args:
         token: token from :func:`umf_factor`.
@@ -1163,7 +1336,7 @@ def set_umf_cache_size(n):
 
 
 def set_num_cache_size(n):
-    """Cap the value-keyed numeric-factor cache per CHOLMOD pattern (default 8).
+    """Cap the value-keyed numeric-factor cache per CHOLMOD pattern (default 32).
 
     Every CHOLMOD call — :func:`solve`, :func:`logdet`, :func:`factor_solve`,
     :func:`factor` and the rest — takes its factor from a per-pattern cache keyed
@@ -1172,6 +1345,10 @@ def set_num_cache_size(n):
     :func:`factor` holds its own reference, so eviction never invalidates it;
     only :func:`clear_cache` does. Each entry is a whole Cholesky factor, so the
     cap bounds memory.
+
+    As with :func:`set_lu_cache_size`, hold at least one factor per ``vmap``
+    batch element: a ``vmap(value_and_grad(logp))`` over more chains than the cap
+    silently refactors on every solve and logdet within an evaluation.
     """
     _cpp.set_num_cache_size(int(n))
 
@@ -1188,22 +1365,25 @@ def set_token_cache_size(n):
     """
     _cpp.set_token_cache_size(int(n))
 
+
 def _logdet_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    return _matrix_call(
         "sparsax_logdet_f64",
-        jax.ShapeDtypeStruct((), jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_logdet_batched_f64",
+        n,
+        lambda _: (),
+        jnp.float64,
+    )(Ai, Aj, Ax)
 
 
 def _selinv_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    return _matrix_call(
         "sparsax_selinv_f64",
-        jax.ShapeDtypeStruct(Ax.shape, jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_selinv_batched_f64",
+        n,
+        lambda Ai_: Ai_.shape,
+        jnp.float64,
+    )(Ai, Aj, Ax)
 
 
 def selinv(Ai, Aj, Ax, n):
@@ -1211,7 +1391,9 @@ def selinv(Ai, Aj, Ax, n):
 
     Returns ``z`` with ``z[k] == (A^{-1})[Ai[k], Aj[k]]``, computed by
     Takahashi's recurrence on the Cholesky factor without ever forming the dense
-    inverse. Shares the factorization cache with :func:`solve` / :func:`logdet`.
+    inverse: one dense block at a time on a supernodal factor, one column at a
+    time on a simplicial one. Shares the factorization cache with :func:`solve`
+    / :func:`logdet`.
 
     This is the quantity :func:`logdet`'s reverse-mode rule uses
     (``d log|A| / dA = A^{-1}``), exposed directly because the selected inverse
@@ -1360,7 +1542,7 @@ def factor_solve(Ai, Aj, Ax, rhs, want_logdet=False, n=None):
         ``b``'s shape. If ``want_logdet`` is set, returns ``(xs, logdet)``.
 
     Note:
-        This primitive is forward-only (no autodiff rule). Use :func:`solve` /
+        This primitive has no autodiff rule. Use :func:`solve` /
         :func:`logdet`, which define VJPs, when you need gradients.
     """
     _require_x64()
@@ -1449,21 +1631,20 @@ def sample_gaussian(Ai, Aj, Ax, b, z, want_logdet=False):
 # ``jax.vmap`` it composes naturally: ``vmap(factor)`` factors each batch
 # element once, and ``vmap(solve_factor, in_axes=(None, 0))`` reuses one factor
 # across a batch of RHS — the key Krylov-recurrence shape (one factor, m+1
-# solves). The token is forward-only (no autodiff); use :func:`solve` /
+# solves). The token is not differentiable; use :func:`solve` /
 # :func:`logdet` when gradients are needed.
 
 
 def _factor_ffi(Ai, Aj, Ax, n):
-    call = jax.ffi.ffi_call(
+    # vmap(factor) gives each batch element its own factor and token: one factor
+    # per chain, matching factor_solve's per-element factorization.
+    return _matrix_call(
         "sparsax_factor_f64",
-        jax.ShapeDtypeStruct((2,), jnp.int64),
-        # The C++ handler factors one Ax per call; vmap(factor) maps to one
-        # FFI call per batch element, each producing its own token. This is the
-        # intended batch semantics (one factor per chain), and matches
-        # factor_solve's per-element factorization.
-        vmap_method="sequential",
-    )
-    return call(Ai, Aj, Ax, n=np.int64(n))
+        "sparsax_factor_batched_f64",
+        n,
+        lambda _: (2,),
+        jnp.int64,
+    )(Ai, Aj, Ax)
 
 
 def factor(Ai, Aj, Ax, n):
@@ -1481,7 +1662,7 @@ def factor(Ai, Aj, Ax, n):
     which a single fused call cannot represent. With a token, the basis build
     is a ``lax.fori_loop`` of :func:`solve_factor` calls against one ``factor``.
 
-    The token is forward-only (no autodiff). Use :func:`solve` / :func:`logdet`
+    The token is not differentiable. Use :func:`solve` / :func:`logdet`
     when gradients are needed.
 
     Args:
@@ -1535,18 +1716,16 @@ def _make_solve_factor_dispatch(mode):
 
     @dispatch.def_vmap
     def _dispatch_vmap(axis_size, in_batched, token, b):
-        token_batched, b_batched = in_batched
-        if b.ndim not in (2, 3):
-            raise ValueError(f"vmapped b must be 2D or 3D, got shape {b.shape}")
-        if not token_batched:
-            token = jnp.broadcast_to(token, (axis_size,) + token.shape)
-        if not b_batched:
-            b = jnp.broadcast_to(b, (axis_size,) + b.shape)
-        call = jax.ffi.ffi_call(
+        return _token_solve_vmap(
+            dispatch,
             "sparsax_solve_factor_batched_f64",
-            jax.ShapeDtypeStruct(b.shape, b.dtype),
+            "mode",
+            mode,
+            axis_size,
+            in_batched,
+            token,
+            b,
         )
-        return call(token, b, mode=np.int64(mode)), True
 
     return dispatch
 
@@ -1559,7 +1738,7 @@ def solve_factor(token, b, mode=MODE_A):
     consumed — call :func:`solve_factor` as many times as needed against the
     same token.
 
-    Forward-only (no autodiff). Use :func:`solve` when gradients are needed.
+    Not differentiable. Use :func:`solve` when gradients are needed.
 
     Args:
         token: ``Factor`` from :func:`factor` (an opaque ``int64[2]`` array).
@@ -1573,9 +1752,10 @@ def solve_factor(token, b, mode=MODE_A):
     Note:
         Under ``jax.vmap``, ``vmap(solve_factor, in_axes=(None, 0))`` reuses one
         factor across a batch of RHS — the key Krylov-recurrence shape (one
-        factor, ``m+1`` solves). ``vmap(factor)`` followed by
-        ``vmap(solve_factor)`` (both batched) produces one factor per batch
-        element, matching :func:`factor_solve`'s batch semantics.
+        factor, ``m+1`` solves), run as one multi-column solve. ``vmap(factor)``
+        followed by ``vmap(solve_factor)`` (both batched) produces one factor per
+        batch element, matching :func:`factor_solve`'s batch semantics. The two
+        nest in either order, as one native call.
     """
     _require_x64()
     token = jnp.asarray(token, jnp.int64)
@@ -1591,19 +1771,16 @@ def solve_factor(token, b, mode=MODE_A):
 
 
 def _logdet_factor_ffi(token):
-    call = jax.ffi.ffi_call(
-        "sparsax_logdet_factor_f64",
-        jax.ShapeDtypeStruct((), jnp.float64),
-        vmap_method="sequential",
-    )
-    return call(token)
+    return _token_logdet_call(
+        "sparsax_logdet_factor_f64", "sparsax_logdet_factor_batched_f64"
+    )(token)
 
 
 def logdet_factor(token):
     """Return ``log|A|`` from a pre-computed factor (no refactor).
 
     Reads the Cholesky diagonal from the factor held in ``token`` (from
-    :func:`factor`); ``O(n)`` cost. Forward-only (no autodiff).
+    :func:`factor`); ``O(n)`` cost. Not differentiable.
 
     Args:
         token: ``Factor`` from :func:`factor`.
@@ -1653,6 +1830,7 @@ def update_solve(Ai, Aj, Ax, C, b, downdate=False, mode=MODE_A, return_logdet=Fa
     Raises:
         Exception: if ``A`` is not positive definite, or a downdate drives the
             updated matrix indefinite.
+            ``set_options(on_failure="nan")`` returns NaN instead.
     """
     _require_x64()
     Ai = jnp.asarray(Ai, jnp.int32)
@@ -1689,6 +1867,221 @@ def update_solve(Ai, Aj, Ax, C, b, downdate=False, mode=MODE_A, return_logdet=Fa
     return (x, ld) if return_logdet else x
 
 
+# argmax_logprob's draw schemes, as the number of leading GHK steps that take
+# scrambled Sobol points.  256 is the size of the direction-number table.
+_ARGMAX_SOBOL_DIMS = {"iid": 0, "sobol": 256}
+
+
+def _argmax_logprob_ffi(
+    Ai, Aj, Ax, mean, chosen, competitors, keys, n_draws, seed, want_grad, sobol_dims
+):
+    n_paths, n = mean.shape
+    call = jax.ffi.ffi_call(
+        "sparsax_argmax_logprob_f64",
+        (
+            jax.ShapeDtypeStruct((n_paths,), jnp.float64),
+            jax.ShapeDtypeStruct((n_paths, n) if want_grad else (0,), jnp.float64),
+        ),
+        vmap_method="sequential",
+    )
+    return call(
+        Ai,
+        Aj,
+        Ax,
+        mean,
+        chosen,
+        competitors,
+        keys,
+        n_draws=np.int64(n_draws),
+        seed=np.int64(seed),
+        want_grad=np.int64(1 if want_grad else 0),
+        sobol_dims=np.int64(sobol_dims),
+    )
+
+
+@functools.partial(jax.custom_vjp, nondiff_argnums=(7, 8, 9))
+def _argmax_logprob(
+    mean, Ai, Aj, Ax, chosen, competitors, keys, n_draws, seed, sobol_dims
+):
+    return _argmax_logprob_ffi(
+        Ai, Aj, Ax, mean, chosen, competitors, keys, n_draws, seed, False, sobol_dims
+    )[0]
+
+
+def _argmax_logprob_fwd(
+    mean, Ai, Aj, Ax, chosen, competitors, keys, n_draws, seed, sobol_dims
+):
+    # symbolic_zeros: each differentiable argument arrives as .value + .perturbed.
+    if Ax.perturbed:
+        raise ValueError(
+            "sparsax.argmax_logprob has no derivative with respect to Ax, and a "
+            "zero would be wrong.  To hold A fixed while differentiating the "
+            "means, pass jax.lax.stop_gradient(Ax).  For a parameter of A, "
+            "difference the log-probability in that parameter: the draws are "
+            "fixed, so it is smooth."
+        )
+    logp, grad = _argmax_logprob_ffi(
+        Ai.value,
+        Aj.value,
+        Ax.value,
+        mean.value,
+        chosen.value,
+        competitors.value,
+        keys.value,
+        n_draws,
+        seed,
+        True,
+        sobol_dims,
+    )
+    return logp, grad
+
+
+def _argmax_logprob_bwd(n_draws, seed, sobol_dims, grad, ct):
+    # Only ``mean`` is differentiable; _argmax_logprob_fwd rejects a perturbed ``Ax``.
+    if isinstance(ct, jax.custom_derivatives.SymbolicZero):
+        return (None,) * 7
+    return (ct[:, None] * grad, None, None, None, None, None, None)
+
+
+_argmax_logprob.defvjp(_argmax_logprob_fwd, _argmax_logprob_bwd, symbolic_zeros=True)
+
+
+def argmax_logprob(
+    Ai,
+    Aj,
+    Ax,
+    mean,
+    chosen,
+    competitors=None,
+    n_draws=128,
+    seed=0,
+    keys=None,
+    draws="sobol",
+):
+    """Log-probability that ``chosen`` is the largest component of a sparse-precision Gaussian.
+
+    For ``x ~ N(mean, A^{-1})`` with ``A`` the SPD *precision*, returns
+    ``log P(argmax_k x_k = chosen)``: the choice probability of a multinomial
+    probit whose utilities form a Gaussian Markov random field (a spatial
+    multinomial probit, say, with ``A = (I - ρW)'(I - ρW)``).  It is estimated
+    by the GHK simulator, run on the sparse factor of ``A`` rather than on the
+    dense covariance of the utility differences, so a draw costs
+    ``O(nnz(L))`` rather than ``O(n^2)``: the differences' precision is
+    ``A_{-j,-j} - v v'/c`` (``v = (A 1)_{-j}``, ``c = 1'A1``), and the rank-one
+    term has a closed-form factor.
+
+    ``A`` must be symmetric positive definite, but the model behind it need
+    not be symmetric: for a SAR with any weights ``W``, directed or not,
+    ``A = M'M`` with ``M = I - ρW`` is SPD whenever ``M`` is nonsingular, so
+    CHOLMOD always applies and no LU backend is needed.  The same cached
+    factor gives the means: ``M^{-1} X β = A^{-1} M' X β``, one
+    :func:`solve`.
+
+    The estimate is unbiased for the probability (so slightly biased low for
+    its log, by about half the relative variance), and its variance depends on
+    the order in which the alternatives are drawn: those most likely to beat
+    ``chosen`` should come first.  Pass them as ``competitors``, e.g. the
+    ``K ≈ 10-30`` alternatives with the largest ``mean``; they are moved to the
+    end of the elimination order (``cholmod_rowdel`` plus a dense ``K x K``
+    block) while everything else keeps the fill-reducing order.  Without them,
+    variance grows quickly with ``n``.
+
+    The first 256 steps of each path take scrambled Sobol points rather than
+    independent draws, competitors first.  Nested uniform scrambling, keyed on
+    ``(seed, keys[p])``, keeps each point uniform on the cube, so the estimate
+    stays unbiased and each decision-maker's points are independent of the
+    others'.  At ``n = 4,900`` with 30 competitors and 128 draws, the median
+    variance of the log-probability fell 34x when the means spread widely across
+    alternatives and 2.2x when they were nearly flat, for about 5% more time, and
+    up to about 30% more on small problems, where more of the steps are scrambled.
+    Keep ``n_draws`` a power of two, which is where the points balance.
+
+    Draws are a fixed function of ``(seed, keys[p], draw, step)``, so repeated
+    calls reproduce them and the result is a smooth function of ``mean``, as
+    simulated maximum likelihood needs; the competitor lists fix the variable
+    order, so hold them fixed while optimizing.  All paths share one cached
+    factorization of ``A`` and run in parallel (``SPARSAX_NUM_THREADS``).
+
+    Differentiable in ``mean`` by reverse mode (``jax.grad``, ``jax.vjp``): the
+    handler computes ``d logp / d mean`` with a reverse sweep through the
+    recursion, at about the cost of the forward pass.  There is no derivative
+    with respect to ``A``, so a gradient that flows through ``Ax`` raises
+    ``ValueError``: wrap ``Ax`` in ``jax.lax.stop_gradient`` to hold it fixed,
+    or difference in the parameter of ``A`` (the draws are fixed, so the
+    log-probability is smooth in it).  There is no forward-mode rule.
+
+    Memory: each worker thread holds about ``2 * n * n_draws`` float64 values
+    of per-draw state (``4 * n * n_draws`` with gradients), e.g. 8 MB at
+    ``n = 5000`` and 100 draws.
+
+    Args:
+        Ai, Aj, Ax: COO of the SPD precision ``A``, as in :func:`solve`.
+        mean: ``[n]`` or ``[n_paths, n]`` float64 — means of ``x``.
+        chosen: int or ``[n_paths]`` int — the index whose maximality is scored.
+        competitors: ``None`` or ``[n_paths, K]`` int — per path, the indices to
+            draw first, most competitive first; ``-1`` marks an unused slot.
+            Must not contain ``chosen`` or repeat an index.
+        n_draws: GHK draws per path (static); a power of two suits ``"sobol"``.
+        seed: integer seed (static).
+        keys: ``None`` or ``[n_paths]`` int — per-path keys for the draws
+            (default ``arange(n_paths)``).  Give each decision-maker a stable
+            key to keep their draws fixed across calls and batchings.
+        draws: ``"sobol"`` (default) or ``"iid"``, independent draws throughout
+            (static).
+
+    Returns:
+        ``[n_paths]`` float64 log-probabilities, or a scalar for 1D ``mean``.
+    """
+    _require_x64()
+    Ai = jnp.asarray(Ai, jnp.int32)
+    Aj = jnp.asarray(Aj, jnp.int32)
+    Ax = jnp.asarray(Ax, jnp.float64)
+    if Ai.ndim != 1 or Ai.shape != Aj.shape or Ax.shape != Ai.shape:
+        raise ValueError("Ai, Aj, Ax must be 1D with equal lengths")
+    mean = jnp.asarray(mean, jnp.float64)
+    single = mean.ndim == 1
+    if single:
+        mean = mean[None, :]
+    if mean.ndim != 2:
+        raise ValueError(f"mean must be 1D or 2D, got shape {mean.shape}")
+    n_paths = mean.shape[0]
+    chosen = jnp.broadcast_to(jnp.asarray(chosen, jnp.int32), (n_paths,))
+    if competitors is None:
+        competitors = jnp.zeros((n_paths, 0), jnp.int32)
+    competitors = jnp.asarray(competitors, jnp.int32)
+    if competitors.ndim == 1:
+        competitors = competitors[None, :]
+    if competitors.ndim != 2 or competitors.shape[0] != n_paths:
+        raise ValueError(
+            f"competitors must have shape (n_paths, K), got {competitors.shape}"
+        )
+    keys = (
+        jnp.arange(n_paths, dtype=jnp.int64)
+        if keys is None
+        else jnp.broadcast_to(jnp.asarray(keys, jnp.int64), (n_paths,))
+    )
+    if int(n_draws) < 1:
+        raise ValueError("n_draws must be >= 1")
+    if draws not in _ARGMAX_SOBOL_DIMS:
+        raise ValueError(f"draws must be one of {sorted(_ARGMAX_SOBOL_DIMS)}")
+    sobol_dims = _ARGMAX_SOBOL_DIMS[draws]
+    if sobol_dims and int(n_draws) > 2**32:
+        raise ValueError("the Sobol sequence has at most 2**32 points")
+    out = _argmax_logprob(
+        mean,
+        Ai,
+        Aj,
+        Ax,
+        chosen,
+        competitors,
+        keys,
+        int(n_draws),
+        int(seed),
+        sobol_dims,
+    )
+    return out[0] if single else out
+
+
 def _bcoo_parts(A):
     """Extract ``(Ai, Aj, Ax)`` from a JAX ``BCOO``-like sparse matrix.
 
@@ -1708,7 +2101,18 @@ def _bcoo_parts(A):
         raise ValueError(
             f"sparsax: expected BCOO indices of shape (nnz, 2), got {idx.shape}"
         )
-    return idx[:, 0], idx[:, 1], data
+    # BCOO pads with entries at the out-of-bounds index (n, n), under fromdense's
+    # nse or sum_duplicates, say.  They stand for nothing, so make them a zero at
+    # (0, 0), which a duplicate merges away.
+    shape = getattr(A, "shape", None)
+    if shape is None:
+        return idx[:, 0], idx[:, 1], data
+    keep = jnp.all(idx < jnp.asarray(shape, idx.dtype), axis=1)
+    return (
+        jnp.where(keep, idx[:, 0], 0),
+        jnp.where(keep, idx[:, 1], 0),
+        jnp.where(keep, data, 0.0),
+    )
 
 
 def solve_bcoo(A, b, mode=MODE_A):
@@ -1745,21 +2149,51 @@ def update_solve_bcoo(A, C, b, downdate=False, mode=MODE_A, return_logdet=False)
     )
 
 
-def set_options(*, supernodal="auto"):
-    """Configure CHOLMOD behavior.
+def set_options(*, supernodal=None, on_failure=None, ordering=None):
+    """Configure sparsax for this process.  An option left out keeps its value.
 
     Args:
-        supernodal: ``"auto"`` (CHOLMOD decides, default), ``"simplicial"``
-            (faster triangular solves on very sparse matrices), or
-            ``"supernodal"`` (BLAS-based, faster factorization on denser
+        supernodal: ``"auto"`` (CHOLMOD decides, the initial value),
+            ``"simplicial"`` (faster triangular solves on very sparse matrices),
+            or ``"supernodal"`` (BLAS-based, faster factorization on denser
             problems). Clears the factorization cache so the setting applies
             to all patterns.
+        on_failure: what a factorization that fails on the numbers does, in
+            every backend and in the PyTensor frontend: the matrix is not
+            positive definite, or it is singular, or a value is not finite.
+            ``"raise"`` (the initial value) raises an error, which aborts the
+            whole computation, ``vmap`` batch included.  ``"nan"`` returns NaN for
+            the failed element and leaves the others alone, so a sampler can
+            reject the proposal and its other chains carry on: gradients and
+            tokens from a failed factorization are NaN too.  Other errors, such as
+            bad arguments or a stale token, always raise.  It takes effect at
+            once, in functions already compiled, and leaves the caches alone.
+        ordering: the fill-reducing ordering behind CHOLMOD's analysis.
+            ``"auto"`` (the initial value) lets CHOLMOD try AMD and turn to METIS
+            when AMD's fill looks poor.  ``"amd"``, ``"metis"`` and ``"nesdis"``
+            use that ordering, and ``"best"`` tries all three and keeps the
+            cheapest.  Only the speed changes, never the answers.  Clears the
+            factorization cache, like ``supernodal``.  KLU and UMFPACK keep their
+            own orderings.
     """
-    codes = {"simplicial": 0, "auto": 1, "supernodal": 2}
-    if supernodal not in codes:
-        raise ValueError(f"supernodal must be one of {sorted(codes)}")
-    _cpp.set_supernodal(codes[supernodal])
-    _cpp.clear_cache()
+    if supernodal is not None:
+        codes = {"simplicial": 0, "auto": 1, "supernodal": 2}
+        if supernodal not in codes:
+            raise ValueError(f"supernodal must be one of {sorted(codes)}")
+    if on_failure not in (None, "raise", "nan"):
+        raise ValueError('on_failure must be "raise" or "nan"')
+    # Negative codes are sparsax's own; the rest are CHOLMOD_AMD and so on.
+    orderings = {"auto": -1, "best": -2, "amd": 2, "metis": 3, "nesdis": 4}
+    if ordering is not None and ordering not in orderings:
+        raise ValueError(f"ordering must be one of {sorted(orderings)}")
+    if ordering is not None:
+        _cpp.set_ordering(orderings[ordering])
+        _cpp.clear_cache()
+    if supernodal is not None:
+        _cpp.set_supernodal(codes[supernodal])
+        _cpp.clear_cache()
+    if on_failure is not None:
+        _cpp.set_nan_on_failure(on_failure == "nan")
 
 
 def clear_cache():

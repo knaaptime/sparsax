@@ -24,5 +24,6 @@ dependencies:
   - pytest
   - pytest-cov
   - pytest-xdist
+  - pytest-reportlog
   - codecov
   - coverage

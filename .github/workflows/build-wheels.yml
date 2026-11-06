@@ -41,7 +41,7 @@ jobs:
             arch: AMD64
     runs-on: ${{ matrix.os }}
     env:
-      CIBW_BUILD: "cp312-* cp313-* cp314-*"
+      CIBW_BUILD: "cp312-* cp313-* cp314-* cp315-*"
       # jaxlib (needed at build time for XLA FFI headers) has no musllinux
       # wheels published at all -- only manylinux, macOS, and Windows. That's
       # an upstream gap, not something fixable from this workflow, so skip
@@ -74,12 +74,14 @@ jobs:
         LD_LIBRARY_PATH="/tmp/suitesparse/lib64:/tmp/suitesparse/lib:$LD_LIBRARY_PATH"
 
       # ── Every platform: test the repaired wheel before it can publish ─────
-      # Fails on a bundled OpenMP/Fortran runtime and checks a solve and a
-      # second derivative, then runs the autodiff test module.
-      CIBW_TEST_REQUIRES: pytest scipy
+      # Fails on a bundled OpenMP/Fortran runtime and checks a solve, a second
+      # derivative and the BLAS calls sparsax makes itself, then runs the whole
+      # test suite against this wheel's own SuiteSparse and BLAS.  The PyTensor
+      # tests skip themselves.
+      CIBW_TEST_REQUIRES: pytest pytest-xdist scipy
       CIBW_TEST_COMMAND: >
         python {project}/ci/check_wheel.py &&
-        pytest -q {project}/tests/test_higher_order_ad.py
+        pytest -q -n auto {project}/tests
 
       # ── Windows ────────────────────────────────────────────────────────────
       # CHOLMOD (from SuiteSparse) isn't preinstalled here either. vcpkg

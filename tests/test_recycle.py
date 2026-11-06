@@ -6,6 +6,10 @@ on its pivot sequence -- provided nothing else holds that factor.  These tests
 shrink the caches so every call recycles, and pin the results to dense algebra.
 """
 
+import subprocess
+import sys
+import textwrap
+
 import jax
 
 jax.config.update("jax_enable_x64", True)
@@ -138,4 +142,85 @@ def test_token_tables_are_bounded(backend):
             np.asarray(solve_factor(tokens[0], b))
     finally:
         sparsax.set_token_cache_size(64)
+        sparsax.clear_cache()
+
+
+def test_default_cholmod_cache_gives_32_chains_one_factorization_each():
+    """A vmapped value_and_grad must not evict a chain's factor mid-evaluation.
+
+    One evaluation calls the factor several times (solve, logdet, the two
+    gradients).  If the batch outgrows the cache those calls miss and refactor.
+    In a subprocess because another test may have changed the cache size, and the
+    default is the point.
+    """
+    script = textwrap.dedent(
+        """
+        import jax
+        jax.config.update("jax_enable_x64", True)
+        import jax.numpy as jnp
+        import numpy as np
+        import sparsax
+
+        n = 40
+        Ai = np.concatenate([np.arange(n), np.arange(n - 1)]).astype(np.int32)
+        Aj = np.concatenate([np.arange(n), np.arange(1, n)]).astype(np.int32)
+        Ax = np.concatenate([np.full(n, 3.0), np.full(n - 1, -1.0)])
+        b = jnp.ones(n)
+
+        def logp(scale):
+            ax = scale * Ax
+            x = sparsax.solve(Ai, Aj, ax, b)
+            return -0.5 * b @ x + 0.5 * sparsax.logdet(Ai, Aj, ax, n)
+
+        batch = 32
+        f = jax.jit(jax.vmap(jax.value_and_grad(logp)))
+        scales = 1.0 + 0.01 * jnp.arange(batch)
+        jax.block_until_ready(f(scales))
+        before = sparsax.factorization_count()
+        jax.block_until_ready(f(1.5 * scales))
+        print(sparsax.factorization_count() - before)
+        """
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=300
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert int(proc.stdout.strip()) == 32
+
+
+@pytest.mark.parametrize(
+    "solve, set_size",
+    [
+        (sparsax.solve, sparsax.set_num_cache_size),
+        (sparsax.lu_solve, sparsax.set_lu_cache_size),
+        (sparsax.umf_solve, sparsax.set_umf_cache_size),
+    ],
+    ids=["cholmod", "klu", "umfpack"],
+)
+def test_shrinking_a_cache_releases_what_no_longer_fits(solve, set_size):
+    """A cap is a bound on memory, so lowering it must take effect at once."""
+    A = 3.0 * np.eye(12) - np.eye(12, k=1) - np.eye(12, k=-1)
+    Ai, Aj = np.nonzero(A)
+    Ai, Aj = Ai.astype(np.int32), Aj.astype(np.int32)
+    Ax = A[Ai, Aj]
+    b = np.ones(12)
+    scales = [1.0, 2.0, 3.0, 4.0]
+    try:
+        set_size(4)
+        sparsax.clear_cache()
+        for s in scales:
+            jax.block_until_ready(solve(Ai, Aj, s * Ax, b))
+        before = sparsax.factorization_count()
+        for s in scales:
+            jax.block_until_ready(solve(Ai, Aj, s * Ax, b))
+        assert sparsax.factorization_count() == before  # all four were held
+
+        set_size(1)
+        for s in scales:
+            jax.block_until_ready(solve(Ai, Aj, s * Ax, b))
+        assert sparsax.factorization_count() >= before + 3  # at most one still was
+        x = solve(Ai, Aj, 2.0 * Ax, b)
+        np.testing.assert_allclose(x, np.linalg.solve(2.0 * A, b))
+    finally:
+        set_size(32)
         sparsax.clear_cache()

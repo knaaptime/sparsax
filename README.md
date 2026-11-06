@@ -30,7 +30,7 @@ than `scipy.sparse.linalg.splu`, while running entirely inside `jax.jit`.
 
 - **CHOLMOD** — `solve`, `logdet`, `selinv` (selected inverse), `factor_solve`,
   `sample_gaussian`, `update_solve` (rank-k update/downdate) for symmetric positive definite
-  `A`.
+  `A`, and `argmax_logprob` (GHK choice probabilities of a sparse-precision Gaussian).
 - **KLU** — `lu_solve`, `lu_logdet`, `lu_factor` / `lu_solve_factor` for general
   non-symmetric `A` (e.g. `A = I − ρW` with a row-standardised spatial weights matrix).
 - **UMFPACK** — `umf_solve`, `umf_logdet`, `umf_factor` / `umf_solve_factor`: the same API
@@ -39,11 +39,12 @@ than `scipy.sparse.linalg.splu`, while running entirely inside `jax.jit`.
   *Two LU backends: KLU vs UMFPACK* below.
 - **JIT / `lax.scan`**: the symbolic analysis is computed once and reused across iterations.
 - **`vmap`**: `jax.vmap(solve)` lowers to a *single* native FFI call that loops over the
-  batch in C++ (reusing the cached analysis), rather than XLA per-iteration dispatch.
+  batch in C++ (reusing the cached analysis), rather than XLA per-iteration dispatch. A batch
+  of right-hand sides against fixed values is one multi-column solve on one factor.
   Composes with `grad` (`vmap(grad(solve))` batches too).
 - **Autodiff**: `solve` has a custom reverse-mode VJP in both `Ax` and `b`; `logdet` has one
   in `Ax` via the selected inverse. `lu_solve` is differentiable in `Ax` and `b` (transpose
-  solve), as is `umf_solve`; `lu_logdet` and `umf_logdet` are forward-only. Together
+  solve), as is `umf_solve`; `lu_logdet` and `umf_logdet` are not differentiable. Together
   `solve`/`logdet` give the gradient of a
   Gaussian log-density, so a precision matrix's values can be fit by HMC/NUTS, VI, or
   empirical-Bayes optimization.
@@ -128,7 +129,7 @@ def step(Ax, b):
 
 KLU shares the same caching story as CHOLMOD: the sparsity pattern's fill-reducing analysis is
 computed once and cached, and under `jax.vmap` the whole batch is solved in a single native FFI
-call. `lu_solve` is differentiable in `Ax` and `b` (transpose solve); `lu_logdet` is forward-only
+call. `lu_solve` is differentiable in `Ax` and `b` (transpose solve); `lu_logdet` is not differentiable
 (the non-symmetric logdet gradient is the full selected inverse, which KLU does not expose —
 use `logdet` for symmetric `A` when a gradient is needed).
 
@@ -202,7 +203,8 @@ cache surviving JIT-compiled iterations.
 Tokens are plain arrays with no destructor, so each backend keeps only its 64 newest
 (`set_token_cache_size` changes it) and releases the rest; a released token raises a
 "stale factor token" error. Hold a token across at most that many newer factorizations of its
-backend, or refactor.
+backend, or refactor. A token works only with its own backend's functions and a `b` of the
+factor's size; anything else raises an error.
 
 Once a pattern's value cache is full (`set_lu_cache_size`, `set_umf_cache_size`,
 `set_num_cache_size`; 32 by default), a factorization at new values reuses the storage of the
@@ -211,6 +213,13 @@ place, and KLU runs `klu_refactor` on its pivot sequence (1.2–1.8× cheaper th
 falling back to a full factorization if the reciprocal pivot growth collapses. UMFPACK's symbolic
 analysis uses the values of the first call on a pattern, which lets it choose the symmetric
 strategy for `I − ρW` (1.35–1.95× faster numeric factorizations than a pattern-only analysis).
+
+CHOLMOD's analysis tries AMD, and METIS when AMD's fill looks poor. `set_options(ordering="nesdis")`
+uses nested dissection instead (`"amd"`, `"metis"` and `"best"` also work). On 2-D grids and on
+k-NN and distance-band graphs with 30,000 to 400,000 nodes, that cut fill by 8–21%, the time of
+a factorization by 5–18% and of a selected inverse by 4–23%, for an analysis 5–11× slower, which
+is paid once per pattern. It changes no answers, and it stays opt-in because the gain is modest
+and small problems may never repay the analysis.
 
 ## Factor once, do everything: `factor_solve` / `sample_gaussian`
 
@@ -239,7 +248,7 @@ Each `rhs` entry is `(b, modes)` where `modes` is one `MODE_*` or a sequence app
 right. `sparsax.factorization_count()` reports how many real factorizations have happened —
 handy for confirming the fusion. Benchmarked Gibbs draw (mean + sample + logdet) vmapped over a
 batch of *different* A's: **4× fewer factorizations and ~3.3–3.6× faster** than issuing the
-separate `solve`/`logdet` primitives. `factor_solve` is forward-only (no autodiff rule); use
+separate `solve`/`logdet` primitives. `factor_solve` has no autodiff rule; use
 `solve`/`logdet` when you need gradients.
 
 The KLU analogue is `lu_factor` + `lu_solve_factor` (+ `lu_logdet_factor`): factorize once,
@@ -270,9 +279,13 @@ z   = sparsax.selinv(Ai, Aj, Ax, n)   # z[k] == (A^-1)[Ai[k], Aj[k]]
 var = z[Ai == Aj]                      # diag(A^-1): Gaussian marginal variances
 ```
 
-`selinv` shares the factorization cache, is JIT-compilable and `vmap`-able, and costs one
-selected-inversion pass over the factor (`O(nnz(L))`-ish), not `n` solves. `factor_solve` /
-`sample_gaussian` remain forward-only.
+`selinv` shares the factorization cache and is JIT-compilable and `vmap`-able. On a supernodal
+factor, CHOLMOD's automatic choice except on very sparse matrices, it treats each supernode as
+one dense block with BLAS and costs 1.2–1.9× a factorization (M-series macOS, grids and a k-NN
+graph up to `n = 360,000`): 53 ms on a 2-D grid with `n = 90,000`, 132 ms on a 3-D grid with
+`n = 43,000`. A simplicial factor runs one column at a time. So does every factor on Windows,
+where sparsax has no direct BLAS link: it first converts a supernodal factor to simplicial, and
+those two grids take 556 ms and 7.8 s. `factor_solve` / `sample_gaussian` have no autodiff rule.
 
 `solve`, `lu_solve` and `umf_solve` differentiate by implicit differentiation
 (`jax.lax.custom_linear_solve`): every derivative of `A x = b` is another solve on the same
@@ -280,6 +293,66 @@ cached factor (a transpose solve for the LU backends), so derivatives of **any o
 forward and reverse mode, including exact Hessians and Hessian-vector products for Newton and
 trust-region methods. `logdet`'s rule is first-order only, and neither `lu_logdet` nor
 `umf_logdet` is differentiable.
+
+## Choice probabilities: `argmax_logprob`
+
+`argmax_logprob` scores which component of a sparse-precision Gaussian is largest:
+`log P(argmax_k x_k = j)` for `x ~ N(mean, A⁻¹)`. That is the choice probability of a
+multinomial probit whose utilities form a Gaussian Markov random field, such as a spatial
+multinomial probit with `A = (I − ρW)'(I − ρW)`. It runs the GHK simulator on the sparse factor
+of `A` rather than on the dense covariance of the utility differences, so a draw costs
+`O(nnz(L))` instead of `O(n²)`: the differences' precision is sparse minus a rank-one term with
+a closed-form factor, and each path deletes its chosen index from one cached factor with
+`cholmod_rowdel`.
+
+```python
+# mean: one row per decision-maker; chosen[p]: the index they picked
+masked = mean.at[jnp.arange(len(chosen)), chosen].set(-jnp.inf)
+comp = jnp.argsort(-masked, axis=1)[:, :30]        # the 30 likeliest rivals, drawn first
+logp = sparsax.argmax_logprob(Ai, Aj, Ax, mean, chosen, comp, n_draws=256, keys=ids)
+grad = jax.grad(lambda m: sparsax.argmax_logprob(Ai, Aj, Ax, m, chosen, comp).sum())(mean)
+```
+
+Draws are a fixed function of `(seed, keys[p], draw, step)`, so the simulated log-likelihood is
+reproducible across calls and batchings and smooth in `mean`, which simulated maximum
+likelihood needs. GHK's variance depends on the order of the draws, and it grows quickly with
+`n` unless the rivals most likely to beat the chosen index come first: pass them as
+`competitors`, which are moved to the end of the elimination order (one `cholmod_rowdel` each
+plus a dense block) while everything else keeps the fill-reducing order.
+
+The first 256 steps of each path take scrambled Sobol points instead of independent draws,
+competitors first, scrambled per `(seed, keys[p])` so that the estimate stays unbiased. With
+`n = 4,900`, 30 competitors and 128 draws, the median variance of the log-probability fell 34×
+when the means spread widely across alternatives (standard deviation 2), 5.4× at 1 and 2.2× at
+0.5, the hardest case; the RMS error against a 16,384-draw reference fell from 0.12 to 0.026,
+from 0.43 to 0.24, and from 1.8 to 1.4. The gradient's variance fell 9.5× in the first case.
+This takes about 5% more time, and up to about 30% more on small problems, where more of the
+steps are scrambled. Keep `n_draws` a power of two, which is where the points balance:
+`draws="iid"` restores independent draws.
+
+The gradient with
+respect to `mean` is a reverse sweep through the recursion at about 1.8× the cost of the value.
+There is no gradient with respect to `A`, so one that flows through `Ax` raises an error: wrap
+`Ax` in `jax.lax.stop_gradient` to hold it fixed, or difference in the parameter of `A`, which
+the fixed draws keep smooth. With `n = 5,000`, 4,000 paths, 100 draws and 30 competitors, a value
+takes about 10 s and a value-and-gradient about 17 s on 16 threads (M-series macOS).
+
+## When a factorization fails
+
+A factorization can fail on the numbers: the matrix is not positive definite, it is singular,
+or a value is not finite. By default that raises an error, which aborts the whole computation,
+`vmap` batch included. A sampler needs something else: it should reject a proposal outside the
+valid region, and its other chains should carry on.
+
+```python
+sparsax.set_options(on_failure="nan")
+```
+
+With this option the failed element returns NaN and the rest of the batch is unaffected, in all
+three backends and in the PyTensor frontend. Its gradient is NaN too, and a token from a failed
+factorization gives NaN from every function that takes it. Bad arguments, stale tokens and
+running out of memory still raise. The option applies to the whole process, takes effect at
+once in compiled functions, and leaves the caches alone.
 
 ## Threads
 
@@ -296,6 +369,17 @@ A single solve with many right-hand sides (128 columns or more) is itself split 
 workspaces. With 4,000 right-hand sides on an `n = 3,600` k-NN system, 16 threads take
 the solve from 0.24 s to 0.018 s (KLU), 0.63 s to 0.061 s (UMFPACK), and 0.21 s / 0.47 s
 to 0.026 s / 0.032 s (CHOLMOD simplicial / supernodal).
+
+A `vmap` over the values of `A` runs on several threads too, with one factor per element, as
+long as each thread gets enough work to repay starting it (from a batch of two at
+`n = 900`), and `SPARSAX_NUM_THREADS` caps this as well. A vmapped log-density and its gradient
+over 16 chains went from 118 ms to 17 ms on a 2-D grid with `n = 10,000`, from 1.45 s to 0.20 s
+at `n = 90,000`, from 1.60 s to 0.26 s on a k-NN graph with `n = 100,000`, and from 3.5 s to
+0.91 s on a 3-D grid with `n = 43,000`, whose large supernodes already use BLAS threads (M3
+Max). Such a batch counts as many concurrent callers for the advice on BLAS threads above.
+Threads asking for values already being factored wait for that factor rather than repeat the
+work, so chains started at one point factor once. The scripts in `benchmarks/` produce the
+timings in this README.
 
 ## PyMC / PyTensor (NUTS)
 
@@ -318,13 +402,12 @@ reverse-mode rules (`solve` in `Ax`/`b`, `logdet` in `Ax`); the pattern `(Ai, Aj
 non-differentiable data. On PyTensor ≥ 3.1 the gradient routes through `Op.pullback`; older
 versions use `grad`.
 
-> **Prefer the C backend, not numba.** These Ops implement a pure-Python `perform` (it calls
-> the native core, which holds no GIL and does the real work — the CHOLMOD call dominates).
-> PyTensor's **C backend** (`FAST_RUN`, the default) calls that `perform` directly with no
-> penalty. PyTensor's **numba backend** cannot JIT a Python `perform`, so it falls back to
-> *object mode* and prints a `UserWarning` on every call — functionally correct but with
-> per-call overhead. Keep PyMC on its default sampler (C backend) to use these Ops, and switch
-> to the JAX frontend above if you deliberately run PyMC's JAX/numba linker.
+These Ops implement a Python `perform` that calls the native core, which releases the GIL while
+it works, so other Python threads keep running. From PyTensor 3 the default linker is Numba, even
+with `mode="FAST_RUN"`. It cannot compile a Python `perform`, so it runs these Ops in object mode
+and prints a `UserWarning` when it compiles the function, not on each call; the results are
+correct (checked on PyTensor 3.3.2). `mode="JAX"` does not work, because the Ops register no JAX
+conversion: to run on JAX, use the JAX frontend above.
 
 ## JAX sparse (`BCOO`)
 
@@ -362,7 +445,7 @@ BSD-3-Clause is GPL-compatible, so making the combination is fine — but the re
 is not permissive.
 
 This is not incidental: `update_solve` is built on CHOLMOD's `cholmod_updown`
-(Modify), CHOLMOD's default `AUTO` strategy selects the Supernodal factorization,
+(Modify), `argmax_logprob` on its `cholmod_rowdel` (Modify), CHOLMOD's default `AUTO` strategy selects the Supernodal factorization,
 and the whole `umf_*` family is UMFPACK.
 
 *Using* `sparsax` — running it, doing research with it, publishing results — is

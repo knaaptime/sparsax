@@ -141,11 +141,12 @@ class TestBatching:
             np.testing.assert_allclose(xs[i], np.linalg.solve(A, Bs[i]), rtol=1e-10)
 
     def test_vmap_lowers_to_single_batched_call(self, spd):
-        """vmap must route to the native batched FFI call, exactly once."""
+        """vmap over the values must route to the native batched FFI call, exactly once."""
         Ai, Aj, Ax, A = spd
-        bs = np.ones((4, A.shape[0]))
-        f = jax.jit(jax.vmap(lambda b: sparsax.solve(Ai, Aj, Ax, b)))
-        hlo = f.lower(bs).compile().as_text()
+        b = np.ones(A.shape[0])
+        axs = np.stack([Ax, 2.0 * Ax, 3.0 * Ax, 4.0 * Ax])
+        f = jax.jit(jax.vmap(lambda a: sparsax.solve(Ai, Aj, a, b)))
+        hlo = f.lower(axs).compile().as_text()
         assert hlo.count("sparsax_solve_batched_f64") == 1
 
     def test_vmap_of_grad(self, spd):
@@ -765,3 +766,49 @@ class TestCache:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestPaddedBCOO:
+    """``BCOO.fromdense(A, nse=...)`` pads with entries at (n, n), out of bounds on purpose."""
+
+    def _padded(self):
+        from jax.experimental import sparse
+
+        A = np.array([[4.0, 1.0, 0.0], [1.0, 3.0, 0.5], [0.0, 0.5, 2.0]])
+        return A, sparse.BCOO.fromdense(jnp.asarray(A), nse=np.count_nonzero(A) + 3)
+
+    @pytest.mark.parametrize(
+        "solve",
+        [sparsax.solve_bcoo, sparsax.lu_solve_bcoo, sparsax.umf_solve_bcoo],
+        ids=["cholmod", "klu", "umfpack"],
+    )
+    def test_solve(self, solve):
+        A, M = self._padded()
+        b = np.array([1.0, 2.0, 3.0])
+        np.testing.assert_allclose(solve(M, b), np.linalg.solve(A, b))
+
+    @pytest.mark.parametrize(
+        "logdet",
+        [sparsax.logdet_bcoo, sparsax.lu_logdet_bcoo, sparsax.umf_logdet_bcoo],
+        ids=["cholmod", "klu", "umfpack"],
+    )
+    def test_logdet(self, logdet):
+        A, M = self._padded()
+        np.testing.assert_allclose(logdet(M), np.linalg.slogdet(A)[1])
+
+    def test_padding_cannot_reach_a_gradient(self):
+        A, M = self._padded()
+
+        def f(d):
+            return sparsax.logdet_bcoo(M.__class__((d, M.indices), shape=M.shape))
+
+        g = np.asarray(jax.grad(f)(M.data))
+        assert np.all(np.isfinite(g))
+        np.testing.assert_array_equal(g[-3:], np.zeros(3))
+
+    def test_under_jit(self):
+        A, M = self._padded()
+        b = np.array([1.0, 2.0, 3.0])
+        np.testing.assert_allclose(
+            jax.jit(sparsax.solve_bcoo)(M, b), np.linalg.solve(A, b)
+        )

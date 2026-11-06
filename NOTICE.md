@@ -14,6 +14,46 @@ BSD-3-Clause is GPL-compatible, so making the combination is permitted. But
 compatibility only means the combination is *allowed*; it does not make the
 result permissive. It does not.
 
+## Sobol direction numbers
+
+`src/cpp/sobol_directions.h` holds the first 256 dimensions of Joe and Kuo's
+direction numbers (`new-joe-kuo-6.21201`, from
+<https://web.maths.unsw.edu.au/~fkuo/sobol/>), which `argmax_logprob` uses for its
+draws: S. Joe and F. Y. Kuo, "Constructing Sobol sequences with better
+two-dimensional projections", *SIAM J. Sci. Comput.* 30, 2635-2654, 2008. Their
+licence applies to those numbers, in source and in compiled form:
+
+```
+Copyright (c) 2008, Frances Y. Kuo and Stephen Joe
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+    * Neither the names of the copyright holders nor the names of the
+      University of New South Wales and the University of Waikato
+      and its contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
+EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
 ## What gets linked
 
 `sparsax_cpp` links CHOLMOD, KLU, and UMFPACK directly, and those pull in the
@@ -37,7 +77,8 @@ GPL-2.0-or-later**.
 Not theoretically — these are called on ordinary code paths:
 
 - **CHOLMOD Modify**, via `cholmod_updown`, is what `update_solve` and
-  `update_solve_bcoo` are built on.
+  `update_solve_bcoo` are built on, and via `cholmod_rowdel`, what
+  `argmax_logprob` is built on.
 - **CHOLMOD Supernodal**, via `cholmod_factorize` under CHOLMOD's default
   `AUTO` strategy, which selects the supernodal factorization for suitable
   matrices. `set_options(supernodal=...)` selects it explicitly.
@@ -68,7 +109,7 @@ it.
 
 A build reaching no GPL code is possible in principle but is not a supported
 configuration: it would require dropping the UMFPACK backend entirely, dropping
-`update_solve` / `update_solve_bcoo` (CHOLMOD Modify), and forcing
+`update_solve` / `update_solve_bcoo` and `argmax_logprob` (CHOLMOD Modify), and forcing
 `supernodal=off` so `cholmod_factorize` stays in the LGPL simplicial path. That
 removes a large part of why the package exists, so it is not offered. Open an
 issue if you have a concrete need for it.

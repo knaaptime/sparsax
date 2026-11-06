@@ -7,6 +7,10 @@ calls stay exact on a shared factor, on distinct factors, and through a shared
 factor token.
 """
 
+import os
+import subprocess
+import sys
+import textwrap
 from concurrent.futures import ThreadPoolExecutor
 
 import jax
@@ -295,3 +299,159 @@ def test_many_rhs_solve_matches_dense(backend):
             np.testing.assert_allclose(g, g_ref, rtol=1e-11, atol=1e-11)
     finally:
         sparsax.set_options(supernodal="auto")
+
+
+def test_worker_thread_exception_raises_instead_of_aborting():
+    """An exception on a spawned worker must reach Python, not std::terminate.
+
+    n_draws this large makes the first per-draw allocation throw.  In a subprocess
+    because the failure mode is the death of the whole interpreter.
+    """
+    script = textwrap.dedent(
+        """
+        import jax
+        jax.config.update("jax_enable_x64", True)
+        import numpy as np
+        import sparsax
+
+        Ai = np.arange(5, dtype=np.int32)
+        mean = np.zeros((4, 5))
+        chosen = np.zeros(4, dtype=np.int32)
+        try:
+            # Independent draws, or the Sobol limit on n_draws raises in Python first.
+            sparsax.argmax_logprob(
+                Ai, Ai, np.ones(5), mean, chosen, n_draws=2**61, draws="iid"
+            )
+        except Exception as e:
+            print("raised:", e)
+        """
+    )
+    env = {**os.environ, "SPARSAX_NUM_THREADS": "4"}
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    # The allocation's own message, so the failure came from a worker.
+    assert "raised:" in proc.stdout and "vector" in proc.stdout
+
+
+@pytest.mark.parametrize(
+    "solve",
+    [sparsax.solve, sparsax.lu_solve, sparsax.umf_solve],
+    ids=["cholmod", "klu", "umfpack"],
+)
+def test_clear_cache_makes_every_thread_forget_its_last_pattern(solve):
+    """A thread remembers its last pattern; clear_cache must reach that memory too."""
+    A = 3.0 * np.eye(9) - np.eye(9, k=1) - np.eye(9, k=-1)
+    Ai, Aj = np.nonzero(A)
+    Ai, Aj = Ai.astype(np.int32), Aj.astype(np.int32)
+    Ax = A[Ai, Aj]
+    b = np.arange(1.0, 10.0)
+
+    def one():
+        return np.asarray(solve(Ai, Aj, Ax, b))
+
+    with ThreadPoolExecutor(2) as pool:
+        jax.block_until_ready(pool.submit(one).result())
+        jax.block_until_ready(pool.submit(one).result())
+        sparsax.clear_cache()
+        assert sparsax.cache_size() == 0
+        np.testing.assert_allclose(pool.submit(one).result(), np.linalg.solve(A, b))
+        assert sparsax.cache_size() == 1
+        np.testing.assert_allclose(pool.submit(one).result(), np.linalg.solve(A, b))
+        assert sparsax.cache_size() == 1
+    np.testing.assert_allclose(one(), np.linalg.solve(A, b))
+    assert sparsax.cache_size() == 1
+
+
+@pytest.mark.parametrize(
+    "solve",
+    [sparsax.lu_solve, sparsax.lu_solve_factor],
+    ids=["matrix", "token"],
+)
+def test_klu_threads_sharing_a_factor_do_not_corrupt_each_other(solve):
+    """Every thread solves its own right-hand sides against one factor, flat out.
+
+    A solve writes a workspace inside the KLU factor, so threads sharing one need a
+    workspace each.  If two ever shared, their answers would mix, and a large system
+    keeps them inside the solve long enough to overlap almost always.
+    """
+    side = 150
+    W = _rook_W(side).tocoo()
+    n = side * side
+    rows = np.concatenate([np.arange(n), W.row])
+    cols = np.concatenate([np.arange(n), W.col])
+    vals = np.concatenate([np.ones(n), -0.9 * W.data])
+    Ai, Aj = rows.astype(np.int32), cols.astype(np.int32)
+    A = sp.coo_matrix((vals, (rows, cols)), shape=(n, n)).tocsr()
+    if solve is sparsax.lu_solve:
+        run = jax.jit(lambda t, b: sparsax.lu_solve(Ai, Aj, vals, b))
+    else:
+        run = jax.jit(sparsax.lu_solve_factor)
+    token = sparsax.lu_factor(Ai, Aj, vals, n)
+    jax.block_until_ready(run(token, jnp.ones(n)))
+
+    def work(t):
+        rng = np.random.default_rng(100 + t)
+        worst = 0.0
+        for _ in range(25):
+            b = rng.normal(size=n)
+            x = np.asarray(run(token, jnp.asarray(b)))
+            worst = max(worst, np.max(np.abs(A @ x - b)))
+        return worst
+
+    with ThreadPoolExecutor(THREADS) as pool:
+        assert max(pool.map(work, range(THREADS))) < 1e-9
+
+
+@pytest.mark.parametrize("work", ["solve", "logdet", "selinv"])
+def test_a_long_native_call_lets_other_python_threads_run(work):
+    """The numpy core, which the PyTensor Ops call, must release the GIL."""
+    import threading
+    import time
+
+    import sparsax_cpp as cpp
+
+    side = 500
+    path = sp.diags([-np.ones(side - 1), -np.ones(side - 1)], [-1, 1])
+    eye = sp.identity(side)
+    A = sp.triu(
+        sp.kron(path, eye) + sp.kron(eye, path) + 5.0 * sp.identity(side**2)
+    ).tocoo()
+    Ai, Aj = A.row.astype(np.int32), A.col.astype(np.int32)
+    n = side**2
+    sparsax.clear_cache()
+
+    ticks = []
+    running = threading.Event()
+    stop = threading.Event()
+
+    def ticker():
+        running.set()
+        while not stop.is_set():
+            ticks.append(time.perf_counter())
+            time.sleep(0.001)
+
+    thread = threading.Thread(target=ticker)
+    thread.start()
+    running.wait()
+    try:
+        start = time.perf_counter()
+        if work == "solve":
+            cpp.solve_np(Ai, Aj, A.data, np.ones(n), 0)
+        elif work == "logdet":
+            cpp.logdet_np(Ai, Aj, A.data, n)
+        else:
+            cpp.selinv_np(Ai, Aj, A.data, n)
+        end = time.perf_counter()
+    finally:
+        stop.set()
+        thread.join()
+    during = [t for t in ticks if start <= t <= end]
+    # The analysis and the factorization alone take far longer than a tick.
+    assert end - start > 0.02
+    assert len(during) >= 5, f"{len(during)} ticks in {end - start:.3f} s"
