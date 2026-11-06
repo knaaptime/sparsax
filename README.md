@@ -302,7 +302,7 @@ a closed-form factor, and each path deletes its chosen index from one cached fac
 # mean: one row per decision-maker; chosen[p]: the index they picked
 masked = mean.at[jnp.arange(len(chosen)), chosen].set(-jnp.inf)
 comp = jnp.argsort(-masked, axis=1)[:, :30]        # the 30 likeliest rivals, drawn first
-logp = sparsax.argmax_logprob(Ai, Aj, Ax, mean, chosen, comp, n_draws=200, keys=ids)
+logp = sparsax.argmax_logprob(Ai, Aj, Ax, mean, chosen, comp, n_draws=256, keys=ids)
 grad = jax.grad(lambda m: sparsax.argmax_logprob(Ai, Aj, Ax, m, chosen, comp).sum())(mean)
 ```
 
@@ -311,7 +311,19 @@ reproducible across calls and batchings and smooth in `mean`, which simulated ma
 likelihood needs. GHK's variance depends on the order of the draws, and it grows quickly with
 `n` unless the rivals most likely to beat the chosen index come first: pass them as
 `competitors`, which are moved to the end of the elimination order (one `cholmod_rowdel` each
-plus a dense block) while everything else keeps the fill-reducing order. The gradient with
+plus a dense block) while everything else keeps the fill-reducing order.
+
+The first 256 steps of each path take scrambled Sobol points instead of independent draws,
+competitors first, scrambled per `(seed, keys[p])` so that the estimate stays unbiased. With
+`n = 4,900`, 30 competitors and 128 draws, the median variance of the log-probability fell 34×
+when the means spread widely across alternatives (standard deviation 2), 5.4× at 1 and 2.2× at
+0.5, the hardest case; the RMS error against a 16,384-draw reference fell from 0.12 to 0.026,
+from 0.43 to 0.24, and from 1.8 to 1.4. The gradient's variance fell 9.5× in the first case.
+This takes about 5% more time, and up to about 30% more on small problems, where more of the
+steps are scrambled. Keep `n_draws` a power of two, which is where the points balance:
+`draws="iid"` restores independent draws.
+
+The gradient with
 respect to `mean` is a reverse sweep through the recursion at about 1.8× the cost of the value.
 There is no gradient with respect to `A`, so one that flows through `Ax` raises an error: wrap
 `Ax` in `jax.lax.stop_gradient` to hold it fixed, or difference in the parameter of `A`, which

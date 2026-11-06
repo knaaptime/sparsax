@@ -1790,8 +1790,13 @@ def update_solve(Ai, Aj, Ax, C, b, downdate=False, mode=MODE_A, return_logdet=Fa
     return (x, ld) if return_logdet else x
 
 
+# argmax_logprob's draw schemes, as the number of leading GHK steps that take
+# scrambled Sobol points.  256 is the size of the direction-number table.
+_ARGMAX_SOBOL_DIMS = {"iid": 0, "sobol": 256}
+
+
 def _argmax_logprob_ffi(
-    Ai, Aj, Ax, mean, chosen, competitors, keys, n_draws, seed, want_grad
+    Ai, Aj, Ax, mean, chosen, competitors, keys, n_draws, seed, want_grad, sobol_dims
 ):
     n_paths, n = mean.shape
     call = jax.ffi.ffi_call(
@@ -1813,17 +1818,22 @@ def _argmax_logprob_ffi(
         n_draws=np.int64(n_draws),
         seed=np.int64(seed),
         want_grad=np.int64(1 if want_grad else 0),
+        sobol_dims=np.int64(sobol_dims),
     )
 
 
-@functools.partial(jax.custom_vjp, nondiff_argnums=(7, 8))
-def _argmax_logprob(mean, Ai, Aj, Ax, chosen, competitors, keys, n_draws, seed):
+@functools.partial(jax.custom_vjp, nondiff_argnums=(7, 8, 9))
+def _argmax_logprob(
+    mean, Ai, Aj, Ax, chosen, competitors, keys, n_draws, seed, sobol_dims
+):
     return _argmax_logprob_ffi(
-        Ai, Aj, Ax, mean, chosen, competitors, keys, n_draws, seed, False
+        Ai, Aj, Ax, mean, chosen, competitors, keys, n_draws, seed, False, sobol_dims
     )[0]
 
 
-def _argmax_logprob_fwd(mean, Ai, Aj, Ax, chosen, competitors, keys, n_draws, seed):
+def _argmax_logprob_fwd(
+    mean, Ai, Aj, Ax, chosen, competitors, keys, n_draws, seed, sobol_dims
+):
     # symbolic_zeros: each differentiable argument arrives as .value + .perturbed.
     if Ax.perturbed:
         raise ValueError(
@@ -1844,11 +1854,12 @@ def _argmax_logprob_fwd(mean, Ai, Aj, Ax, chosen, competitors, keys, n_draws, se
         n_draws,
         seed,
         True,
+        sobol_dims,
     )
     return logp, grad
 
 
-def _argmax_logprob_bwd(n_draws, seed, grad, ct):
+def _argmax_logprob_bwd(n_draws, seed, sobol_dims, grad, ct):
     # Only ``mean`` is differentiable; _argmax_logprob_fwd rejects a perturbed ``Ax``.
     if isinstance(ct, jax.custom_derivatives.SymbolicZero):
         return (None,) * 7
@@ -1859,7 +1870,16 @@ _argmax_logprob.defvjp(_argmax_logprob_fwd, _argmax_logprob_bwd, symbolic_zeros=
 
 
 def argmax_logprob(
-    Ai, Aj, Ax, mean, chosen, competitors=None, n_draws=100, seed=0, keys=None
+    Ai,
+    Aj,
+    Ax,
+    mean,
+    chosen,
+    competitors=None,
+    n_draws=128,
+    seed=0,
+    keys=None,
+    draws="sobol",
 ):
     """Log-probability that ``chosen`` is the largest component of a sparse-precision Gaussian.
 
@@ -1889,6 +1909,16 @@ def argmax_logprob(
     block) while everything else keeps the fill-reducing order.  Without them,
     variance grows quickly with ``n``.
 
+    The first 256 steps of each path take scrambled Sobol points rather than
+    independent draws, competitors first.  Nested uniform scrambling, keyed on
+    ``(seed, keys[p])``, keeps each point uniform on the cube, so the estimate
+    stays unbiased and each decision-maker's points are independent of the
+    others'.  At ``n = 4,900`` with 30 competitors and 128 draws, the median
+    variance of the log-probability fell 34x when the means spread widely across
+    alternatives and 2.2x when they were nearly flat, for about 5% more time, and
+    up to about 30% more on small problems, where more of the steps are scrambled.
+    Keep ``n_draws`` a power of two, which is where the points balance.
+
     Draws are a fixed function of ``(seed, keys[p], draw, step)``, so repeated
     calls reproduce them and the result is a smooth function of ``mean``, as
     simulated maximum likelihood needs; the competitor lists fix the variable
@@ -1914,11 +1944,13 @@ def argmax_logprob(
         competitors: ``None`` or ``[n_paths, K]`` int — per path, the indices to
             draw first, most competitive first; ``-1`` marks an unused slot.
             Must not contain ``chosen`` or repeat an index.
-        n_draws: GHK draws per path (static).
+        n_draws: GHK draws per path (static); a power of two suits ``"sobol"``.
         seed: integer seed (static).
         keys: ``None`` or ``[n_paths]`` int — per-path keys for the draws
             (default ``arange(n_paths)``).  Give each decision-maker a stable
             key to keep their draws fixed across calls and batchings.
+        draws: ``"sobol"`` (default) or ``"iid"``, independent draws throughout
+            (static).
 
     Returns:
         ``[n_paths]`` float64 log-probabilities, or a scalar for 1D ``mean``.
@@ -1953,6 +1985,11 @@ def argmax_logprob(
     )
     if int(n_draws) < 1:
         raise ValueError("n_draws must be >= 1")
+    if draws not in _ARGMAX_SOBOL_DIMS:
+        raise ValueError(f"draws must be one of {sorted(_ARGMAX_SOBOL_DIMS)}")
+    sobol_dims = _ARGMAX_SOBOL_DIMS[draws]
+    if sobol_dims and int(n_draws) > 2**32:
+        raise ValueError("the Sobol sequence has at most 2**32 points")
     out = _argmax_logprob(
         mean,
         Ai,
@@ -1963,6 +2000,7 @@ def argmax_logprob(
         keys,
         int(n_draws),
         int(seed),
+        sobol_dims,
     )
     return out[0] if single else out
 

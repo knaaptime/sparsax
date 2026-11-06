@@ -25,6 +25,7 @@
 #include <nanobind/ndarray.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -41,6 +42,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "sobol_directions.h"
 #include "xla/ffi/api/ffi.h"
 
 namespace ffi = xla::ffi;
@@ -1774,7 +1776,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(CholmodUpdownSolveF64, UpdownSolveF64Impl,
 // ---------------------------------------------------------------------------
 // argmax log-probability (GHK) handler:
 //   (Ai, Aj, Ax, mean[P,n], chosen[P], competitors[P,K], keys[P];
-//    n_draws, seed, want_grad) -> logp[P], grad[P,n] (or [0])
+//    n_draws, seed, want_grad, sobol_dims) -> logp[P], grad[P,n] (or [0])
 //
 // For each path p, log P(argmax_k x_k = chosen[p]) where x ~ N(mean[p], A^{-1})
 // and A, given in COO, is the SPD *precision*: the choice probability of a
@@ -1887,17 +1889,101 @@ inline uint64_t mix64(uint64_t x) {
 }
 constexpr uint64_t kGolden = 0x9E3779B97F4A7C15ULL;
 
-// Hash state for (seed, key, draw); a step's uniform is one more mix.
-inline uint64_t draw_base(uint64_t seed, uint64_t key, uint64_t r) {
-  uint64_t h = mix64(seed + kGolden);
-  h = mix64(h ^ (key + kGolden));
-  return mix64(h ^ (r + kGolden));
+// Hash state for (seed, key); one more mix gives a draw's base, and a step's
+// uniform is one more again.
+inline uint64_t path_state(uint64_t seed, uint64_t key) {
+  return mix64(mix64(seed + kGolden) ^ (key + kGolden));
+}
+inline uint64_t draw_base(uint64_t state, uint64_t r) {
+  return mix64(state ^ (r + kGolden));
 }
 // U(0, 1), never exactly 0 or 1.  52 bits, not 53: (2^53 - 1) + 0.5 is not a
 // double and rounds up to 2^53, which would give exactly 1.
 inline double uniform(uint64_t base, uint64_t step) {
   const uint64_t h = mix64(base ^ (step + kGolden));
   return (static_cast<double>(h >> 12) + 0.5) * 0x1.0p-52;
+}
+
+// Scrambled Sobol draws.  GHK averages a product over draws, so its variance
+// responds to how evenly the draws fill the cube, above all in the first steps,
+// where the rivals that matter are drawn.  Nested uniform (Owen) scrambling flips
+// each digit by a hash of the digits above it.  That keeps the points' balance,
+// makes each point uniform on the cube, so the estimator stays unbiased, and gives
+// every (seed, key) its own independent points.
+
+using SobolDirections = std::array<std::array<uint32_t, 32>, sobol::kDims>;
+
+// Joe and Kuo's recurrence, with the direction numbers scaled to 32 bits.
+inline const SobolDirections& sobol_directions() {
+  static const SobolDirections directions = [] {
+    SobolDirections V{};
+    for (int i = 0; i < 32; ++i) V[0][i] = uint32_t{1} << (31 - i);
+    for (int d = 1; d < sobol::kDims; ++d) {
+      const sobol::Row& row = sobol::kRows[d - 1];
+      const int s = row.s;
+      for (int i = 0; i < s; ++i)
+        V[d][i] = static_cast<uint32_t>(row.m[i]) << (31 - i);
+      for (int i = s; i < 32; ++i) {
+        uint32_t v = V[d][i - s] ^ (V[d][i - s] >> s);
+        for (int k = 1; k < s; ++k)
+          if ((row.a >> (s - 1 - k)) & 1) v ^= V[d][i - k];
+        V[d][i] = v;
+      }
+    }
+    return V;
+  }();
+  return directions;
+}
+
+// Dimension `dim` of the first R points, by Gray code; R <= 2^32.
+template <class Visit>
+inline void sobol_column(int64_t R, int dim, Visit visit) {
+  const std::array<uint32_t, 32>& V = sobol_directions()[dim];
+  uint32_t x = 0;
+  for (int64_t r = 0; r < R; ++r) {
+    if (r > 0) {
+      int lowest_set = 0;
+      while (!((r >> lowest_set) & 1)) ++lowest_set;
+      x ^= V[lowest_set];
+    }
+    visit(r, x);
+  }
+}
+
+// The prefix's leading 1 makes each node of the digit tree a distinct input.  In
+// the first 2^16 points each dimension gives every point a node of its own at depth
+// 16, so one hash there scrambles the low 16 digits exactly as sixteen would; past
+// 2^16 points it still preserves the balance, as a shift within the node.
+inline uint32_t owen_scramble(uint32_t x, uint64_t dim_seed) {
+  uint32_t out = 0;
+  uint64_t prefix = 1;
+  for (int i = 31; i >= 16; --i) {
+    const uint32_t digit = (x >> i) & 1u;
+    const uint32_t flip =
+        static_cast<uint32_t>(mix64(dim_seed + prefix * kGolden) >> 63);
+    out = (out << 1) | (digit ^ flip);
+    prefix = (prefix << 1) | digit;
+  }
+  const uint32_t low = static_cast<uint32_t>(mix64(dim_seed + prefix * kGolden) >> 48);
+  return (out << 16) | ((x & 0xFFFFu) ^ low);
+}
+
+// One step's uniforms for all R draws: scrambled Sobol in the first sobol_dims
+// steps, independent after them.  Depends on neither R nor the batch, so more
+// draws extend the same points.  Below its 32 Sobol digits a point takes its bits
+// from the draw's own hash, which is what the digit tree would give them.
+inline void step_uniforms(int64_t R, uint64_t step, int64_t sobol_dims,
+                          uint64_t state, const uint64_t* base, double* u) {
+  if (static_cast<int64_t>(step) >= sobol_dims) {
+    for (int64_t r = 0; r < R; ++r) u[r] = uniform(base[r], step);
+    return;
+  }
+  const uint64_t dim_seed = mix64(mix64(~state) ^ (step + kGolden));
+  sobol_column(R, static_cast<int>(step), [&](int64_t r, uint32_t x) {
+    const uint64_t high = static_cast<uint64_t>(owen_scramble(x, dim_seed)) << 20;
+    const uint64_t low = mix64(base[r] ^ (step + kGolden)) >> 44;
+    u[r] = (static_cast<double>(high | low) + 0.5) * 0x1.0p-52;
+  });
 }
 
 // In-place lower Cholesky of a dense row-major K x K matrix; false if not PD.
@@ -1973,6 +2059,7 @@ inline SymCSC build_sym_csc(const int32_t* Ai, const int32_t* Aj,
 // Read-only inputs shared by every path of one call.
 struct Shared {
   int64_t n, K, R;
+  int64_t sobol_dims;        // steps drawn from the scrambled Sobol sequence
   uint64_t seed;
   const double* mean;        // [P, n]
   const int32_t* chosen;     // [P]
@@ -1991,7 +2078,7 @@ struct Work {
   std::vector<char> del, isC;
   std::vector<int32_t> Celim;  // competitors in elimination order (most competitive last)
   std::vector<double> b, X, Scc, Dsqrt, w, Gd, beta, mu, vC, wC, GdC, betaC, muC;
-  std::vector<double> eN, eC, s, logw, below;
+  std::vector<double> eN, eC, s, logw, below, u;
   std::vector<uint64_t> base;
   // reverse sweep: per step, the variable it drew and per-draw dz/db, phi/Phi
   std::vector<int64_t> step_var;  // >= 0: kept position t; < 0: competitor -1-a
@@ -2157,9 +2244,11 @@ inline std::string path_logprob(const Shared& sh, int64_t p, Work& wk,
   wk.s.assign(R, 0.0);
   wk.logw.assign(R, 0.0);
   wk.below.resize(R);
+  wk.u.resize(R);
   wk.base.resize(R);
-  const uint64_t key = static_cast<uint64_t>(sh.keys[p]);
-  for (int64_t r = 0; r < R; ++r) wk.base[r] = draw_base(sh.seed, key, r);
+  const uint64_t state =
+      path_state(sh.seed, static_cast<uint64_t>(sh.keys[p]));
+  for (int64_t r = 0; r < R; ++r) wk.base[r] = draw_base(state, r);
   double* s = wk.s.data();
   double* logw = wk.logw.data();
   double* below = wk.below.data();
@@ -2174,9 +2263,10 @@ inline std::string path_logprob(const Shared& sh, int64_t p, Work& wk,
                       double* e, int64_t var) {
     double* dz = grad ? wk.dzdb.data() + step * R : nullptr;
     double* ml = grad ? wk.mills.data() + step * R : nullptr;
+    step_uniforms(R, step, sh.sobol_dims, state, wk.base.data(), wk.u.data());
     for (int64_t r = 0; r < R; ++r) {
       const double bnd = gd * (-ltt * mut + below[r]) + bt * s[r];
-      const double u = uniform(wk.base[r], step);
+      const double u = wk.u[r];
       double z;
       if (bnd > 8.0) {  // Phi(bnd) rounds to 1: an untruncated draw
         z = std::min(ndtri_log(std::log(u)), bnd);
@@ -2319,7 +2409,7 @@ static ffi::Error ArgmaxLogprobF64Impl(
     ffi::Buffer<ffi::S32> chosen, ffi::Buffer<ffi::S32> competitors,
     ffi::Buffer<ffi::S64> keys, ffi::ResultBuffer<ffi::F64> logp,
     ffi::ResultBuffer<ffi::F64> grad, int64_t n_draws, int64_t seed,
-    int64_t want_grad) {
+    int64_t want_grad, int64_t sobol_dims) {
   auto mdims = mean.dimensions();
   if (mdims.size() != 2)
     return ffi::Error::InvalidArgument("sparsax: mean must be 2D (paths, n)");
@@ -2336,6 +2426,11 @@ static ffi::Error ArgmaxLogprobF64Impl(
     return ffi::Error::InvalidArgument(
         "sparsax: chosen, competitors and keys must have one row per path");
   if (n_draws < 1) return ffi::Error::InvalidArgument("sparsax: n_draws must be >= 1");
+  if (sobol_dims < 0 || sobol_dims > sobol::kDims)
+    return ffi::Error::InvalidArgument("sparsax: invalid number of Sobol dimensions");
+  if (sobol_dims > 0 && n_draws > (int64_t{1} << 32))
+    return ffi::Error::InvalidArgument(
+        "sparsax: the Sobol sequence has at most 2**32 points");
   if (want_grad && static_cast<int64_t>(grad->element_count()) != P * n)
     return ffi::Error::InvalidArgument("sparsax: grad must have shape (paths, n)");
   if (P == 0) return ffi::Error::Success();
@@ -2357,6 +2452,7 @@ static ffi::Error ArgmaxLogprobF64Impl(
   sh.n = n;
   sh.K = cdims[1];
   sh.R = n_draws;
+  sh.sobol_dims = sobol_dims;
   sh.seed = static_cast<uint64_t>(seed);
   sh.mean = mean.typed_data();
   sh.chosen = chosen.typed_data();
@@ -2409,7 +2505,8 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(CholmodArgmaxLogprobF64, ArgmaxLogprobF64Impl,
                                   .Ret<ffi::Buffer<ffi::F64>>()   // grad [P,n] or [0]
                                   .Attr<int64_t>("n_draws")
                                   .Attr<int64_t>("seed")
-                                  .Attr<int64_t>("want_grad"));
+                                  .Attr<int64_t>("want_grad")
+                                  .Attr<int64_t>("sobol_dims"));
 
 // ---------------------------------------------------------------------------
 // Numpy-callable core (framework-agnostic, no XLA). These call the same cached
@@ -2469,6 +2566,46 @@ static nb::ndarray<nb::numpy, double> solve_np(ArrI32 Ai, ArrI32 Aj, ArrF64 Ax,
     return nb::ndarray<nb::numpy, double>(
         out, {static_cast<size_t>(n), static_cast<size_t>(nrhs)}, owner);
   return nb::ndarray<nb::numpy, double>(out, {static_cast<size_t>(n)}, owner);
+}
+
+// GHK's uniforms and the raw Sobol points, (n_draws, n_steps) and (n_points, dims),
+// for the tests.  Both run the code the simulator runs.
+static nb::ndarray<nb::numpy, double> ghk_uniforms_np(int64_t n_draws,
+                                                      int64_t n_steps,
+                                                      int64_t sobol_dims,
+                                                      int64_t seed, int64_t key) {
+  if (sobol_dims < 0 || sobol_dims > sobol::kDims)
+    throw std::runtime_error("sparsax: invalid number of Sobol dimensions");
+  double* out = new double[static_cast<size_t>(n_draws) * n_steps];
+  nb::capsule owner(out,
+                    [](void* p) noexcept { delete[] static_cast<double*>(p); });
+  const uint64_t state =
+      ghk::path_state(static_cast<uint64_t>(seed), static_cast<uint64_t>(key));
+  std::vector<uint64_t> base(n_draws);
+  for (int64_t r = 0; r < n_draws; ++r) base[r] = ghk::draw_base(state, r);
+  std::vector<double> u(n_draws);
+  for (int64_t step = 0; step < n_steps; ++step) {
+    ghk::step_uniforms(n_draws, static_cast<uint64_t>(step), sobol_dims, state,
+                       base.data(), u.data());
+    for (int64_t r = 0; r < n_draws; ++r) out[r * n_steps + step] = u[r];
+  }
+  return nb::ndarray<nb::numpy, double>(
+      out, {static_cast<size_t>(n_draws), static_cast<size_t>(n_steps)}, owner);
+}
+
+static nb::ndarray<nb::numpy, double> sobol_points_np(int64_t n_points,
+                                                      int64_t dims) {
+  if (dims < 1 || dims > sobol::kDims)
+    throw std::runtime_error("sparsax: invalid number of Sobol dimensions");
+  double* out = new double[static_cast<size_t>(n_points) * dims];
+  nb::capsule owner(out,
+                    [](void* p) noexcept { delete[] static_cast<double*>(p); });
+  for (int64_t d = 0; d < dims; ++d)
+    ghk::sobol_column(n_points, static_cast<int>(d), [&](int64_t r, uint32_t x) {
+      out[r * dims + d] = static_cast<double>(x) * 0x1.0p-32;
+    });
+  return nb::ndarray<nb::numpy, double>(
+      out, {static_cast<size_t>(n_points), static_cast<size_t>(dims)}, owner);
 }
 
 static double logdet_np(ArrI32 Ai, ArrI32 Aj, ArrF64 Ax, int64_t n) {
@@ -4305,6 +4442,8 @@ NB_MODULE(sparsax_cpp, m) {
   });
 
   // Numpy-callable core, for non-JAX frontends (sparsax.pytensor).
+  m.def("ghk_uniforms_np", &ghk_uniforms_np);
+  m.def("sobol_points_np", &sobol_points_np);
   m.def("solve_np", &solve_np);
   m.def("logdet_np", &logdet_np);
   m.def("selinv_np", &selinv_np);

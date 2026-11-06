@@ -110,7 +110,9 @@ class TestMatrixSolveValues:
     def test_factor_part_modes_match_single_solves(self, system, mode):
         Ai, Aj, Ax, _, rng = system
         B = rng.normal(size=(4, N))
-        got = jax.vmap(lambda v: sparsax.solve(Ai, Aj, Ax, v, mode=mode))(jnp.asarray(B))
+        got = jax.vmap(lambda v: sparsax.solve(Ai, Aj, Ax, v, mode=mode))(
+            jnp.asarray(B)
+        )
         want = np.stack([sparsax.solve(Ai, Aj, Ax, v, mode=mode) for v in B])
         np.testing.assert_allclose(got, want, rtol=1e-12)
 
@@ -186,7 +188,9 @@ class TestMatrixSolveValues:
             )
 
         got = jax.vmap(one)(jnp.array([True, False]))
-        np.testing.assert_allclose(got[0], np.linalg.solve(A, np.asarray(b)), rtol=1e-11)
+        np.testing.assert_allclose(
+            got[0], np.linalg.solve(A, np.asarray(b)), rtol=1e-11
+        )
         np.testing.assert_array_equal(got[1], np.zeros(N))
 
 
@@ -221,9 +225,9 @@ class TestTokenSolveValues:
         scales = np.array([1.0, 2.0, 4.0])
         tokens = jax.vmap(lambda s: factor(Ai, Aj, s * Ax, N))(jnp.asarray(scales))
         B = rng.normal(size=(5, N))
-        got = jax.vmap(
-            lambda t: jax.vmap(lambda v: solve(t, v))(jnp.asarray(B))
-        )(tokens)
+        got = jax.vmap(lambda t: jax.vmap(lambda v: solve(t, v))(jnp.asarray(B)))(
+            tokens
+        )
         want = np.stack([np.linalg.solve(s * A, B.T).T for s in scales])
         np.testing.assert_allclose(got, want, rtol=1e-11)
 
@@ -234,7 +238,9 @@ class TestTokenSolveValues:
         scales = np.array([1.0, 2.0, 4.0])
         tokens = jax.vmap(lambda s: factor(Ai, Aj, s * Ax, N))(jnp.asarray(scales))
         B = rng.normal(size=(5, N))
-        got = jax.vmap(lambda v: jax.vmap(lambda t: solve(t, v))(tokens))(jnp.asarray(B))
+        got = jax.vmap(lambda v: jax.vmap(lambda t: solve(t, v))(tokens))(
+            jnp.asarray(B)
+        )
         want = np.stack(
             [np.stack([np.linalg.solve(s * A, v) for s in scales]) for v in B]
         )
@@ -252,9 +258,7 @@ class TestTokenSolveValues:
         got = jax.vmap(jax.vmap(solve))(tokens, jnp.asarray(B))
         want = np.stack(
             [
-                np.stack(
-                    [np.linalg.solve(scales[o, i] * A, B[o, i]) for i in range(2)]
-                )
+                np.stack([np.linalg.solve(scales[o, i] * A, B[o, i]) for i in range(2)])
                 for o in range(3)
             ]
         )

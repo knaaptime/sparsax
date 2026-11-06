@@ -66,12 +66,15 @@ def problem():
 
 
 class TestValues:
+    @pytest.mark.parametrize("draws", ["sobol", "iid"])
     @pytest.mark.parametrize("K", [0, 5])
-    def test_matches_exact(self, problem, K):
+    def test_matches_exact(self, problem, K, draws):
         Ai, Aj, Ax, Q, means, chosen = problem
         comp = top_competitors(means, chosen, K) if K else None
         got = np.asarray(
-            sparsax.argmax_logprob(Ai, Aj, Ax, means, chosen, comp, n_draws=20000)
+            sparsax.argmax_logprob(
+                Ai, Aj, Ax, means, chosen, comp, n_draws=20000, draws=draws
+            )
         )
         want = np.array([exact_logprob(Q, m, j) for m, j in zip(means, chosen)])
         np.testing.assert_allclose(got, want, atol=0.03)
@@ -147,15 +150,16 @@ class TestDraws:
 
 
 class TestGrad:
+    @pytest.mark.parametrize("draws", ["sobol", "iid"])
     @pytest.mark.parametrize("K", [0, 4])
-    def test_matches_finite_differences(self, problem, K):
+    def test_matches_finite_differences(self, problem, K, draws):
         Ai, Aj, Ax, Q, means, chosen = problem
         comp = top_competitors(means, chosen, K) if K else None
 
         def f(mu):
             return jnp.sum(
                 sparsax.argmax_logprob(
-                    Ai, Aj, Ax, mu, chosen, comp, n_draws=100, seed=7
+                    Ai, Aj, Ax, mu, chosen, comp, draws=draws, n_draws=100, seed=7
                 )
             )
 
@@ -369,5 +373,6 @@ def test_largest_hash_gives_a_finite_draw():
         n_draws=1,
         seed=seed,
         keys=jnp.asarray([_key_with_all_ones_hash(seed)], jnp.int64),
+        draws="iid",
     )
     np.testing.assert_allclose(float(got), 0.0, atol=1e-12)

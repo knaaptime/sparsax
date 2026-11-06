@@ -29,7 +29,11 @@ LOGDETS = {
 TOKENS = {
     "cholmod": (sparsax.factor, sparsax.solve_factor, sparsax.logdet_factor),
     "klu": (sparsax.lu_factor, sparsax.lu_solve_factor, sparsax.lu_logdet_factor),
-    "umfpack": (sparsax.umf_factor, sparsax.umf_solve_factor, sparsax.umf_logdet_factor),
+    "umfpack": (
+        sparsax.umf_factor,
+        sparsax.umf_solve_factor,
+        sparsax.umf_logdet_factor,
+    ),
 }
 N = 12
 
@@ -51,7 +55,9 @@ def system():
     singular = Ax.copy()
     singular[Aj == 0] = 0.0  # a zero column: singular, so also not positive definite
     has_nan = Ax.copy()
-    has_nan[np.flatnonzero(Ai < Aj)[2]] = np.nan  # off-diagonal, upper: all backends read it
+    has_nan[np.flatnonzero(Ai < Aj)[2]] = (
+        np.nan
+    )  # off-diagonal, upper: all backends read it
     return Ai, Aj, Ax, A, singular, has_nan
 
 
@@ -114,7 +120,9 @@ class TestNanValues:
     def test_good_values_are_untouched(self, system, backend):
         Ai, Aj, Ax, A, _, _ = system
         b = np.arange(1.0, N + 1.0)
-        np.testing.assert_allclose(SOLVERS[backend](Ai, Aj, Ax, b), np.linalg.solve(A, b))
+        np.testing.assert_allclose(
+            SOLVERS[backend](Ai, Aj, Ax, b), np.linalg.solve(A, b)
+        )
 
     @pytest.mark.parametrize("backend", SOLVERS)
     def test_only_the_failing_batch_element_is_nan(self, system, backend):
@@ -222,7 +230,9 @@ class TestNanValues:
         lp = sparsax.argmax_logprob(Ai, Aj, singular, means, chosen, n_draws=4)
         assert np.all(np.isnan(lp))
         g = jax.grad(
-            lambda m: sparsax.argmax_logprob(Ai, Aj, singular, m, chosen, n_draws=4).sum()
+            lambda m: sparsax.argmax_logprob(
+                Ai, Aj, singular, m, chosen, n_draws=4
+            ).sum()
         )(jnp.asarray(means))
         assert np.all(np.isnan(g))
 
@@ -350,7 +360,9 @@ class TestPyTensor:
         Ai, Aj, Ax, singular = Ai[upper], Aj[upper], Ax[upper], singular[upper]
         b = np.arange(1.0, N + 1.0)
         ax = pt.dvector("ax")
-        logp = -0.5 * pt.dot(b, cjpt.solve(Ai, Aj, ax, b)) + 0.5 * cjpt.logdet(Ai, Aj, ax, N)
+        logp = -0.5 * pt.dot(b, cjpt.solve(Ai, Aj, ax, b)) + 0.5 * cjpt.logdet(
+            Ai, Aj, ax, N
+        )
         f = pytensor.function([ax], [logp, pt.grad(logp, ax)])
         v, g = f(singular)
         assert np.isnan(v) and np.all(np.isnan(g))
