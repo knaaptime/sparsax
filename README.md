@@ -375,9 +375,9 @@ once in compiled functions, and leaves the caches alone.
 
 The native libraries are called without a global lock, so concurrent calls (one per MCMC
 chain, say) run in parallel. The wheels link a multithreaded BLAS (Accelerate on macOS, the
-pthreads build of OpenBLAS on Linux) but no OpenMP runtime, so they cannot clash with the
-OpenMP runtime of another library in the same process. With many concurrent callers, cap BLAS
-threads to avoid oversubscription, e.g. `OPENBLAS_NUM_THREADS=1` on Linux or
+threaded build of OpenBLAS on Linux and Windows) but no OpenMP runtime, so they cannot clash with
+the OpenMP runtime of another library in the same process. With many concurrent callers, cap BLAS
+threads to avoid oversubscription, e.g. `OPENBLAS_NUM_THREADS=1` on Linux and Windows or
 `VECLIB_MAXIMUM_THREADS=1` on macOS.
 
 A single solve with many right-hand sides (128 columns or more) is itself split into

@@ -102,9 +102,15 @@ jobs:
       # the msys2 mirrors (404 on all mirrors). The runner's preinstalled
       # vcpkg is at a stale commit; updating vcpkg itself picks up the
       # corrected package pins (e.g. autoconf2.71-2.71-4-any).
+      #
+      # openblas[threads]: sparsax calls BLAS from many threads at once, and
+      # vcpkg's default OpenBLAS is single-threaded without locks, which OpenBLAS
+      # says cannot be called that way.  It returned wrong answers without an
+      # error, on the paths that use BLAS (supernodal CHOLMOD, UMFPACK).  This is
+      # the same threaded build the Linux wheels use.
       CIBW_BEFORE_BUILD_WINDOWS: >
         pip install delvewheel &&
-        vcpkg install "suitesparse[gpl]:x64-windows"
+        vcpkg install "suitesparse[gpl]:x64-windows" "openblas[threads]:x64-windows"
       CIBW_ENVIRONMENT_WINDOWS: >
         CMAKE_PREFIX_PATH="C:/vcpkg/installed/x64-windows"
       # --add-path tells delvewheel where to find the CHOLMOD DLLs to bundle,
